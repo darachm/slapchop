@@ -29,7 +29,8 @@ def alignChop(inputQueue,lock):
       print("\t"+multiprocessing.current_process().name+\
         " chewing bite of "+str(len(inputEntryList))+" entries",file=open(args.logFile,"a"))
       for inputEntry in inputEntryList:
-        inputRecord=SeqRecord(Seq(inputEntry[1].rstrip()),id=inputEntry[0].rstrip())
+        idline = inputEntry[0].split(" ")
+        inputRecord=SeqRecord(Seq(inputEntry[1].rstrip()),id=idline[0])
         inputRecord.letter_annotations['phred_quality'] = \
           inputEntry[3][0:len(inputEntry[1].rstrip())]
     
