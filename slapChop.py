@@ -123,16 +123,16 @@ def alignChop(inputQueue,lock):
         outputReportHandle.write(i)
       outputReportHandle.close()
       if args.filters:
-        outputPassHandle = open(args.outputFastq+".pass","a")
+        outputPassHandle = open(args.outputBase+"_pass.fastq","a")
         for i in outputPass:
           outputPassHandle.write(i)
         outputPassHandle.close()
-        outputFailHandle = open(args.outputFastq+".fail","a")
+        outputFailHandle = open(args.outputBase+"_fail.fastq","a")
         for i in outputFail:
           outputFailHandle.write(i)
         outputFailHandle.close()
       else:
-        outputFailHandle = open(args.outputFastq+".all","a")
+        outputFailHandle = open(args.outputBase+"_all.fastq","a")
         for i in outputFail:
           outputFailHandle.write(i)
         outputFailHandle.close()
@@ -191,7 +191,7 @@ if __name__ == '__main__':
   parser.add_argument("--templateGapOpenScore",default=-1)
   parser.add_argument("--templateGapExtendScore",default=-1)
   parser.add_argument("--filters")
-  parser.add_argument("--outputFastq")
+  parser.add_argument("--outputBase")
   parser.add_argument("--outputReport")
   parser.add_argument("--logFile")
   parser.add_argument("--maxQueueSize",help="in gigs",default=10)
@@ -222,11 +222,11 @@ if __name__ == '__main__':
   except:
     None
   try:
-    print("Writing output to "+args.outputFastq,end='')
+    print("Writing output to "+args.outputBase,end='')
     if args.filters:
-      print(".[(pass)|(fail)]")
+      print("_[(pass)|(fail)].fastq")
     else:
-      print(".all\n")
+      print("_all.fastq\n")
   except:
     None
   try:
@@ -241,10 +241,10 @@ if __name__ == '__main__':
   print("BEGIN")
   print()
   
-  subprocess.run(" rm -f "+args.outputFastq,shell=True)
-  subprocess.run(" rm -f "+args.outputFastq+".all",shell=True)
-  subprocess.run(" rm -f "+args.outputFastq+".fail",shell=True)
-  subprocess.run(" rm -f "+args.outputFastq+".pass",shell=True)
+#  subprocess.run(" rm -f "+args.outputBase,shell=True)
+  subprocess.run(" rm -f "+args.outputBase+"_all.fastq",shell=True)
+  subprocess.run(" rm -f "+args.outputBase+"_fail.fastq",shell=True)
+  subprocess.run(" rm -f "+args.outputBase+"_pass.fastq",shell=True)
   subprocess.run(" rm -f "+args.outputReport,shell=True)
   try:
     subprocess.run(" rm -f "+args.logFile,shell=True)
