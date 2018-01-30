@@ -8,21 +8,18 @@ in the reads, then make a decision of filtration based on this as to keep
 the reads or now, then also to use this matching to extract out an
 interspersed UMI from an undetermined location in the read, found by alignment.
 
-Currently just runs for SoBaSeq amplicons (low-input barseq).
+Currently just runs for SoBaSeq amplicons (low-input barseq of the yeast deletion collection).
 
 Goals for the future:
 
-- Tests, to make sure it's doing as we expect it to do
 - Generalize the template design so you can configure via arguments of
-    a template sequence, a regular expression, and the ability to chain these.
+    a template sequence, a regular expression, and the ability to chain these internally.
 - Report generation, so making summary plots from these reports
-    (seperate R script??? something in python???)
 - Different levels of report summary generation, ie per-read statistics or
     just distributions, or nothing
+- Unit tests on choice examples from the sequencing.
 - A better understanding of controlling queuesize and total memory footprint
     to make that super reliable for tuning to the max memory.
-- Come up with a funny bit, describing possible applications of the tool
-    using the lingo and style of the commercial
 
 An example:
 
