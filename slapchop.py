@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
+
 # Simply Looking At Pairwise Comparisons to Optimally Parition
 #
-# This one is for very specific application, my barseq
+# Modifying to be more general.
 #
 
 from Bio.Seq import Seq

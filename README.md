@@ -1,16 +1,14 @@
 
-# Simply Looking At Pairwise Comparisons for Optimized Parsing
+# **S**imply **L**ooking **A**t **P**airwise **C**omparisons for **O**ptimized **P**arsing
 
-ie SLAPCHOP
+ie **SLAPCHOP**
 
-This is a program to take a big fastq file, align it to expected subsequences
-in the reads, then make a decision of filtration based on this as to keep
-the reads or now, then also to use this matching to extract out an
-interspersed UMI from an undetermined location in the read, found by alignment.
+This is a program to take a big fastq file, align it to an expected 
+pattern of information, then make a filtering decision based on this 
+alignment, and use this matching to extract out various elements from
+the read (like an interspersed UMI from an undetermined location).
 
-Currently just runs for SoBaSeq amplicons (low-input barseq of the yeast deletion collection).
-
-Goals for the future:
+Goals for the development:
 
 - Generalize the template design so you can configure via arguments of
     a template sequence, a regular expression, and the ability to chain these internally.
