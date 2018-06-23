@@ -285,11 +285,13 @@ if __name__ == '__main__':
             "exits, so I'm quitting before you ask me to do "+
             "something you'll regret.")
 
-    biteSize = int(args.biteSize)
-
     manager = multiprocessing.Manager()
     queue = manager.Queue()
     lock = manager.Lock()
+
+
+    print("a"+args.biteSize)
+    exit(1)
 
     jobs = []
     jobs.append(multiprocessing.Process(target=reader,\
