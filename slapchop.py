@@ -12,6 +12,7 @@ import argparse
 import subprocess
 import sys
 import time
+import os.path
 
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -203,6 +204,7 @@ if __name__ == '__main__':
             "alignment based cutoff. This is specified per "+
             "operation, so remember the name from above. Syntax: ''")
 #
+    parser.add_argument("--match-score",default=1)
     parser.add_argument("--mismatch-score",default=0.001,
         help="Has to be above 0 in order to use local alignments.")
     parser.add_argument("--gap-open",default=-1)
@@ -215,7 +217,7 @@ if __name__ == '__main__':
     parser.add_argument("output-base",
         help="Base name for the output, will be used to make, "+
             "for example: basename.fastq, basename.report")
-    parser.add_argument("--write-report",default=False,
+    parser.add_argument("--write-report",action='store_true',
         help="Add this flag to print a report of per-read "+
             "statistics, that's a lot of disk writes btw.")
     parser.add_argument("--maxQueueSize",help="in gigs",default=10)
@@ -227,70 +229,61 @@ if __name__ == '__main__':
     if args.regex_gap_open is None: args.regex_gap_open = args.gap_open
     if args.regex_gap_extend is None: args.regex_gap_extend = args.gap_extend
 
-    for key,value in vars(args).items():
-        print(key)
-        print(value)
-    exit(1)
-    print("===")
-
-
 #'opname: [INPUT] > ATCG(?P<regex>regularExpression)With(?P<capgroups>NamedCaptureGroups)ATCG > [regex,capgroups]' 
 #'opname: '
 
 #[('input-fastq', 'zerp'), ('processes', 1), ('bite_size', 1000), ('operation', ['XYZ', '123']), ('filter', None), ('mismatch_score', 0.001), ('gap_open', -1), ('gap_extend', -1), ('read_gap_open', -1), ('read_gap_extend', -1), ('regex_gap_open', -1), ('regex_gap_extend', -1), ('output-base', 'output'), ('write_report', False), ('maxQueueSize', 10)])
     
-    # FIRST, where are we writing to?
-    print("Looking at "+args.inputFastq+", aligning these to "+
-        args.fixed1pattern+" , "+
-        args.fixed2pattern+" , "+
-        args.umipattern+" , "+
-        "with parameters "+
-        "Match "+str(args.matchScore)+", Mismatch "+str(args.mismatchScore)+
-        ", ReadGapOpen "+str(args.readGapOpenScore)+
-        ", ReadGapExtend "+str(args.readGapExtendScore)+
-        ", TemplateGapOpen "+str(args.templateGapOpenScore)+
-        ", TemplateGapExtend "+str(args.templateGapExtendScore)+
-        "\n"
-    )
+    # FIRST, report what we're doing.
+    print()
+    print("I'm reading in '"+vars(args)["input-fastq"]+"', "+
+        "applying these operations of alignment:")
+    try:
+        for i in args.operation:
+            print("\t"+i)
+    except:
+        print("Wait a second, there's no operations to be done! "+
+            "Exiting...")
+        exit(1)
+    print("... with these filters:")
+    try:
+        for i in args.filter:
+            print("\t"+i)
+    except:
+        print("\t( # no filters defined )")
+    print()
+    print("I'm going to use these parameters for the alignments:")
+    print("Match "+str(args.match_score)+", "+
+        "mismatch "+str(args.mismatch_score)+", "+
+        "read gap open "+str(args.read_gap_open)+", "+
+        "read gap extend "+str(args.read_gap_extend)+", "+
+        "regex gap open "+str(args.regex_gap_open)+", "+
+        "regex gap extend "+str(args.regex_gap_extend)+".")
+    print()
+    print("Then, I'm going to write out a FASTQ file to '"+
+        vars(args)["output-base"]+".fastq'",end="")
+    if args.write_report:
+        print(" and a report to '"+
+            vars(args)["output-base"]+"_report.csv'",end="")
+    print(".")
+
+    print()
+    print("I will proceed to process the file with "+
+        str(args.processes)+" processes operating in chunks of "+
+        str(args.bite_size)+" records.")
     
-    try:
-        filterz = re.split(",",args.filters)
-        print("Applying filters of "+str(filterz))
-    except:
-        None
-    try:
-        print("Writing report to "+args.outputReport)
-    except:
-        None
-    try:
-        print("Writing output to "+args.outputBase,end='')
-        if args.filters:
-            print("_[(pass)|(fail)].fastq")
-        else:
-            print("_all.fastq\n")
-    except:
-        None
-    try:
-        print("Doing this in bites of "+args.biteSize)
-    except:
-        None
-    try:
-        print("Writing progress to "+args.logFile)
-    except:
-        None
-    
+    print()
     print("BEGIN")
     print()
     
-#    subprocess.run(" rm -f "+args.outputBase,shell=True)
-    subprocess.run(" rm -f "+args.outputBase+"_all.fastq",shell=True)
-    subprocess.run(" rm -f "+args.outputBase+"_fail.fastq",shell=True)
-    subprocess.run(" rm -f "+args.outputBase+"_pass.fastq",shell=True)
-    subprocess.run(" rm -f "+args.outputReport,shell=True)
-    try:
-        subprocess.run(" rm -f "+args.logFile,shell=True)
-    except:
-        print("You're not using a log file???")
+    if os.path.isfile(vars(args)["output-base"]+".fastq"):
+        print("File "+vars(args)["output-base"]+".fastq "+
+            "exits, so I'm quitting before you ask me to do "+
+            "something you'll regret.")
+    if os.path.isfile(vars(args)["output-base"]+"_report.csv"):
+        print("File "+vars(args)["output-base"]+".fastq "+
+            "exits, so I'm quitting before you ask me to do "+
+            "something you'll regret.")
 
     biteSize = int(args.biteSize)
 
