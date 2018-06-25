@@ -216,18 +216,8 @@ if __name__ == '__main__':
             "alignment based cutoff. This is specified per "+
             "operation, so remember the name from above. Syntax: ''")
 #
-    parser.add_argument("--match-score",default=1)
-    parser.add_argument("--mismatch-score",default=0.001,
-        help="Has to be above 0 in order to use local alignments.")
-    parser.add_argument("--gap-open",default=-1)
-    parser.add_argument("--gap-extend",default=-1)
-    parser.add_argument("--read-gap-open",default=None)
-    parser.add_argument("--read-gap-extend",default=None)
-    parser.add_argument("--seq_pattern-gap-open",default=None)
-    parser.add_argument("--seq_pattern-gap-extend",default=None)
-#
     parser.add_argument("--output-format",
-        help="format for the output file")
+        help="format for the output file",required=True)
 #
     parser.add_argument("output-base",
         help="Base name for the output, will be used to make, "+
@@ -239,10 +229,7 @@ if __name__ == '__main__':
 #
     args=parser.parse_args()
 
-    if args.read_gap_open is None: args.read_gap_open = args.gap_open
-    if args.read_gap_extend is None: args.read_gap_extend = args.gap_extend
-    if args.seq_pattern_gap_open is None: args.seq_pattern_gap_open = args.gap_open
-    if args.seq_pattern_gap_extend is None: args.seq_pattern_gap_extend = args.gap_extend
+#####
 
     args.bite_size = int(args.bite_size)
 
