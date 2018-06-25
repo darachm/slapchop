@@ -5,7 +5,7 @@
 # Modifying to be more general.
 #
 #usage for testing
-# rm sobaseqout*; ./slapchop.py example_sobaseq.fastq sobaseqout --operation "get_sample: INPUT > (?P<sample>[ATCG]{5})(GTCCTCGAGGTCTCT){e<=2}(?P<rest>.*)$" -o "get_strain: rest > (?P<strain>[ATCG]{10,26})(GCGTACGCTGCAGGT){e<=2}.*" --filter "sample_length == 5" --write-report --bite-size 10 --processes 2; wc -l sobaseqout*
+#rm sobaseqout*; ./slapchop.py example_sobaseq.fastq sobaseqout --operation "get_sample: input > (?P<sample>[ATCG]{5})(?P<forward_prime>GTCCTCGAGGTCTCT){e<=2}(?P<rest>.*)" -o "get_strain: rest > (?P<strain>[ATCG]{10,22})GCGTACGCTGCAGGT" --filter "sample_length == 5" --write-report --bite-size 10 --processes 1 --output-seq "forward_prime+rest" --output-id "input.id+'_'+sample.seq" ; wc -l sobaseqout*
 
 import re
 import multiprocessing 
@@ -15,12 +15,15 @@ import subprocess
 import sys
 import time
 import os.path
-from Bio import Seq, SeqRecord, pairwise2, SeqIO
+from Bio import Seq, SeqRecord, SeqIO
 import regex
+import json
 
 def reader(input_line_queue,input_fastq,
-                    out_lock,output_fastq,
-                    report_lock,report_csv,
+                    pass_lock,pass_fastq,
+                    fail_lock,fail_fastq,
+                    report_lock,report_txt,
+                    record_lock,record_csv,
                     bite_size,operations_dict):
 
     while True:
@@ -35,7 +38,7 @@ def reader(input_line_queue,input_fastq,
         print(multiprocessing.current_process().name+
             " trying to read into memory chunk of size "+
             str(bite_size)+" records.",
-            file=open(report_csv,"a"))
+            file=open(report_txt,"a"))
         report_lock.release()
 
         ifqp = open(input_fastq,"r")
@@ -57,35 +60,67 @@ def reader(input_line_queue,input_fastq,
             report_lock.acquire()
             print(multiprocessing.current_process().name+\
                 str(multiprocessing.current_process().pid)+
-                " is done",file=open(report_csv,"a"))
+                " is done",file=open(report_txt,"a"))
             report_lock.release()
         else:
             input_line_queue.put(current_pos)
+
+        pass_records = []
+        fail_records = []
+        report_records = []
 
         for slice_base in itertools.islice(range(len(chunk)),0,None,4):
 
             if chunk[slice_base] == "":
                 break
     
-            alignChop(chunk[slice(slice_base,(slice_base+4))],
-                operations_dict)
+            (passed, output_record, report_object) = \
+                alignChop(chunk[slice(slice_base,(slice_base+4))],
+                    operations_dict)
 
-            out_lock.acquire()
-#                print(i.strip(),file=open(output_fastq,"a"))
-            out_lock.release()
+            if passed:
+                pass_records.append(output_record)
+            else:
+                fail_records.append(output_record)
+
+            report_records.append(report_object)
+
+        
+        pass_lock.acquire()
+        with open(pass_fastq,"a") as f:
+            for i in pass_records:
+                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
+                        i.letter_annotations['phred_quality']+"\n",
+                    file=f)
+        pass_lock.release()
+
+        fail_lock.acquire()
+        with open(fail_fastq,"a") as f:
+            for i in fail_records:
+                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
+                        i.letter_annotations['phred_quality']+"\n",
+                    file=f)
+        fail_lock.release()
+
+        record_lock.acquire()
+        with open(record_csv,"a") as f:
+            for i in report_records:
+                print(i,file=f)
+        record_lock.release()
 
 
 def alignChop(record,operations_dict):
 
-    inputRecord = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
+    input_record = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
         id = record[0].rstrip().split(" ")[0])
-    inputRecord.letter_annotations['phred_quality'] = \
+    input_record.letter_annotations['phred_quality'] = \
         record[3][0:len(record[1].rstrip())]
 
     scores_holder = dict()
     seq_holder = dict()
-    seq_holder['INPUT'] = inputRecord 
-#rewrite as a class
+    seq_holder['input'] = input_record 
+
+#rewrite as a class ????
 
     for operation_name, operation in operations_dict.items():
 
@@ -120,58 +155,32 @@ def alignChop(record,operations_dict):
 
     evaluated_filters = evaluate_filters(args.filter,scores_holder)
 
+
     if not all(evaluated_filters):
-        pass
+        output_record = input_record
+        return((False,output_record,
+            "\"Failed\","+
+            "\""+input_record.id+"\",\""+
+                input_record.seq+"\",\""+
+                re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
+            ))
     else:
-        print("WRITE OUT")
-#        outputString = str(strainSeq.id)+"_"+str(umiSeq.seq)+"\n"+\
-#            str(indexSeq.seq)+str(strainSeq.seq)+"\n"+"+"+"\n"+\
-#            indexSeq.letter_annotations['phred_quality']+\
-#            strainSeq.letter_annotations['phred_quality']+"\n"
-#            
-#                try:
-#                    if eval(args.filters):
-#                        outputPass.append(outputString)
-#                    else:
-#                        outputFail.append(str(inputRecord.id)+"\n"+\
-#                            str(inputRecord.seq)+"\n"+"+"+"\n"+\
-#                            inputRecord.letter_annotations['phred_quality']+"\n")
-#                except:
-#                    outputFail.append(outputString)
-#            
-#                outputReport.append(inputRecord.id+"	"+
-#                    str(Score1)+"	"+str(Score2)+"	"+str(ScoreUMI)+"	"+
-#                    str(AlignmentStart1)+"	"+str(AlignmentEnd1)+"	"+
-#                    str(AlignmentStart2)+"	"+str(AlignmentEnd2)+"	"+
-#                    str(AlignmentStartUMI)+"	"+str(AlignmentEndUMI)+"	"+
-#                    str(indexSeq.seq)+"	"+
-#                    str(fixed1.seq)+"	"+
-#                    str(strainSeq.seq)+"	"+
-#                    str(fixed2.seq)+"	"+
-#                    str(tailSeq.seq)+"\n")
-#            
-#            lock.acquire()
-#            print("\t\t"+multiprocessing.current_process().name+\
-#                " writing out bite of "+str(len(inputEntryList))+" entries",file=open(args.logFile,"a"))
-#            outputReportHandle = open(args.outputReport,"a")
-#            for i in outputReport:
-#                outputReportHandle.write(i)
-#            outputReportHandle.close()
-#            if args.filters:
-#                outputPassHandle = open(args.outputBase+"_pass.fastq","a")
-#                for i in outputPass:
-#                    outputPassHandle.write(i)
-#                outputPassHandle.close()
-#                outputFailHandle = open(args.outputBase+"_fail.fastq","a")
-#                for i in outputFail:
-#                    outputFailHandle.write(i)
-#                outputFailHandle.close()
-#            else:
-#                outputFailHandle = open(args.outputBase+"_all.fastq","a")
-#                for i in outputFail:
-#                    outputFailHandle.write(i)
-#                outputFailHandle.close()
-#            lock.release()
+        output_record = evaluate_output_directives(
+            args.output_seq,args.output_id,seq_holder) 
+        return((True,output_record,
+            "\"Passed\","+
+            "\""+output_record.id+"\",\""+
+                output_record.seq+"\",\""+
+                re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
+            ))
+
+
+def evaluate_output_directives(output_seq, output_id, seq_holder):
+    locals().update(seq_holder)
+    return_record = eval(output_seq)
+    return_record.id = eval(output_id)
+    return(return_record)
+
 
 def evaluate_filters(filters,scores_holder):
     locals().update(scores_holder)
@@ -185,8 +194,6 @@ def evaluate_filters(filters,scores_holder):
     except:
         return([False])
     return(return_object)
-
-
 
 
 
@@ -216,8 +223,14 @@ if __name__ == '__main__':
             "alignment based cutoff. This is specified per "+
             "operation, so remember the name from above. Syntax: ''")
 #
-    parser.add_argument("--output-format",
-        help="format for the output file",required=True)
+    parser.add_argument("--output-id",
+        help="format for the output file id, per read that passes "+
+            "filter",
+        default="input.id")
+    parser.add_argument("--output-seq",
+        help="format for the output file seq, per read that "+
+            "passes filter",
+        default="input")
 #
     parser.add_argument("output-base",
         help="Base name for the output, will be used to make, "+
@@ -270,14 +283,6 @@ if __name__ == '__main__':
 #####
 
     print()
-    print("I'm going to use these parameters for the alignments:")
-    print("Match "+str(args.match_score)+", "+
-        "mismatch "+str(args.mismatch_score)+", "+
-        "read gap open "+str(args.read_gap_open)+", "+
-        "read gap extend "+str(args.read_gap_extend)+", "+
-        "pattern gap open "+str(args.seq_pattern_gap_open)+", "+
-        "pattern gap extend "+str(args.seq_pattern_gap_extend)+".")
-    print()
     print("Then, I'm going to write out a FASTQ file to '"+
         vars(args)["output-base"]+".fastq'",end="")
     if args.write_report:
@@ -312,14 +317,18 @@ if __name__ == '__main__':
     manager  = multiprocessing.Manager()
     input_line_queue = multiprocessing.Queue()
     input_line_queue.put(0)
-    (out_lock, report_lock) = (manager.Lock(), manager.Lock())
+    (pass_lock, fail_lock, report_lock, record_lock) = (
+        manager.Lock(), manager.Lock(), 
+        manager.Lock(), manager.Lock() )
 
     jobs = []
     for i in range(1,int(args.processes)+1):
         jobs.append(multiprocessing.Process(target=reader,
             args=(input_line_queue,vars(args)["input-fastq"],
-                out_lock,vars(args)["output-base"]+".fastq",
-                report_lock,vars(args)["output-base"]+"_report.csv",
+                pass_lock,vars(args)["output-base"]+"_pass.fastq",
+                fail_lock,vars(args)["output-base"]+"_fail.fastq",
+                report_lock,vars(args)["output-base"]+"_log.txt",
+                record_lock,vars(args)["output-base"]+"_record.csv",
                 args.bite_size,operations_dict),
             name="Comrade"+str(i)))
         print("Comrade"+str(i))
