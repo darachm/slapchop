@@ -13,168 +13,180 @@ import subprocess
 import sys
 import time
 import os.path
+from Bio import Seq, SeqRecord, pairwise2, SeqIO
 
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-from Bio import pairwise2
+def alignChopRead(input_line_queue,input_fastq,
+                    out_lock,output_fastq,
+                    report_lock,report_csv,
+                    bite_size,operations_dict):
 
-def alignChop(inputQueue,lock):
     while True:
-        inputEntryList = inputQueue.get()
-        if inputEntryList == None:
+
+        current_pos = input_line_queue.get()
+
+        if current_pos == "poisonpill":
+            input_line_queue.put("poisonpill")
+            return(0)
+
+        report_lock.acquire()
+        print(multiprocessing.current_process().name+
+            " trying to read into memory chunk of size "+
+            str(bite_size)+" records.",
+            file=open(report_csv,"a"))
+        report_lock.release()
+
+        ifqp = open(input_fastq,"r")
+        ifqp.seek(current_pos)
+        chunk = []
+        for i in range(bite_size*4):
+            chunk.append(ifqp.readline())
+#                try:
+#                    anEntry = [next(iterf),next(iterf),next(iterf),next(iterf)]
+#                    thisBite.append(anEntry)
+#                    i += 1
+#                except:
+#                    break
+
+
+        current_pos = ifqp.tell()
+        if ifqp.readline() == "":
+            input_line_queue.put("poisonpill")
+            report_lock.acquire()
             print(multiprocessing.current_process().name+\
-                str(multiprocessing.current_process().pid)+" is done",file=open(args.logFile,"a"))
-            return 1
+                str(multiprocessing.current_process().pid)+
+                " is done",file=open(report_csv,"a"))
+            report_lock.release()
         else:
-            outputPass = []
-            outputFail = []
-            outputReport = []
-            print("\t"+multiprocessing.current_process().name+\
-                " chewing bite of "+str(len(inputEntryList))+" entries",file=open(args.logFile,"a"))
-            for inputEntry in inputEntryList:
-                idline = inputEntry[0].rstrip().split(" ")
-                inputRecord=SeqRecord(Seq(inputEntry[1].rstrip()),id=idline[0])
-                inputRecord.letter_annotations['phred_quality'] = \
-                    inputEntry[3][0:len(inputEntry[1].rstrip())]
-        
-                choppa = []
-            
-                aln1 = pairwise2.align.localmd(
-                    inputRecord.seq, args.fixed1pattern,
-                    args.matchScore,args.mismatchScore,
-                    args.readGapOpenScore,args.readGapExtendScore,
-                    args.templateGapOpenScore,args.templateGapExtendScore,
-                    penalize_end_gaps=(True,False),
-                    one_alignment_only=True
-                )
-            #    print(pairwise2.format_alignment(*aln[0]))
-            #    print(aln[0])
-                Score1 = round(aln1[0][2],3)
-                AlignmentStart1 = aln1[0][3]
-                AlignmentEnd1 = aln1[0][4]
-            
-                aln2 = pairwise2.align.localmd(
-                    inputRecord.seq, args.fixed2pattern,
-                    args.matchScore,args.mismatchScore,
-                    args.readGapOpenScore,args.readGapExtendScore,
-                    args.templateGapOpenScore,args.templateGapExtendScore,
-                    penalize_end_gaps=(True,False),
-                    one_alignment_only=True
-                )
-            #    print(pairwise2.format_alignment(*aln[0]))
-            #    print(aln[0])
-                Score2 = round(aln2[0][2],3)
-                AlignmentStart2 = aln2[0][3]
-                AlignmentEnd2 = aln2[0][4]
-            
-                indexSeq = inputRecord[0:AlignmentStart1]
-                fixed1 = inputRecord[AlignmentStart1:AlignmentEnd1]
-                strainSeq = inputRecord[(AlignmentEnd1-3):(AlignmentEnd1+25)]
-                fixed2 = inputRecord[AlignmentStart2:AlignmentEnd2]
-                tailSeq = inputRecord[AlignmentStart2:]
-            
-                alnUMI = pairwise2.align.localmd(
-                    tailSeq.seq,args.umipattern,
-                    args.matchScore,args.mismatchScore,
-                    args.readGapOpenScore,args.readGapExtendScore,
-                    args.templateGapOpenScore,args.templateGapExtendScore,
-                    penalize_end_gaps=(True,False),
-                    one_alignment_only=True
-                )
-            #    print(pairwise2.format_alignment(*aln[0]))
-            #    print(aln[0])
-                ScoreUMI = round(alnUMI[0][2],3)
-                AlignmentStartUMI = alnUMI[0][3]
-                AlignmentEndUMI = alnUMI[0][4]
-        
-                umiSeq = tailSeq[(alnUMI[0][3]):(alnUMI[0][4])]
-            #    umiSeq = umiSeq[16:31:1]
-            #    umiSeq = umiSeq[17:31:2]
-                umiSeq = umiSeq[18:29:2]
-            
-                outputString = str(strainSeq.id)+"_"+str(umiSeq.seq)+"\n"+\
-                    str(indexSeq.seq)+str(strainSeq.seq)+"\n"+"+"+"\n"+\
-                    indexSeq.letter_annotations['phred_quality']+\
-                    strainSeq.letter_annotations['phred_quality']+"\n"
-            
-                try:
-                    if eval(args.filters):
-                        outputPass.append(outputString)
-                    else:
-                        outputFail.append(str(inputRecord.id)+"\n"+\
-                            str(inputRecord.seq)+"\n"+"+"+"\n"+\
-                            inputRecord.letter_annotations['phred_quality']+"\n")
-                except:
-                    outputFail.append(outputString)
-            
-                outputReport.append(inputRecord.id+"	"+
-                    str(Score1)+"	"+str(Score2)+"	"+str(ScoreUMI)+"	"+
-                    str(AlignmentStart1)+"	"+str(AlignmentEnd1)+"	"+
-                    str(AlignmentStart2)+"	"+str(AlignmentEnd2)+"	"+
-                    str(AlignmentStartUMI)+"	"+str(AlignmentEndUMI)+"	"+
-                    str(indexSeq.seq)+"	"+
-                    str(fixed1.seq)+"	"+
-                    str(strainSeq.seq)+"	"+
-                    str(fixed2.seq)+"	"+
-                    str(tailSeq.seq)+"\n")
-            
-            lock.acquire()
-            print("\t\t"+multiprocessing.current_process().name+\
-                " writing out bite of "+str(len(inputEntryList))+" entries",file=open(args.logFile,"a"))
-            outputReportHandle = open(args.outputReport,"a")
-            for i in outputReport:
-                outputReportHandle.write(i)
-            outputReportHandle.close()
-            if args.filters:
-                outputPassHandle = open(args.outputBase+"_pass.fastq","a")
-                for i in outputPass:
-                    outputPassHandle.write(i)
-                outputPassHandle.close()
-                outputFailHandle = open(args.outputBase+"_fail.fastq","a")
-                for i in outputFail:
-                    outputFailHandle.write(i)
-                outputFailHandle.close()
-            else:
-                outputFailHandle = open(args.outputBase+"_all.fastq","a")
-                for i in outputFail:
-                    outputFailHandle.write(i)
-                outputFailHandle.close()
-            lock.release()
+            input_line_queue.put(current_pos)
 
+        for slice_base in itertools.islice(range(len(chunk)),0,None,4):
 
-def reader(queue,inputFastqFileName,biteSize):
-    with open(inputFastqFileName,'r') as f:
-        print(multiprocessing.current_process().name+" trying to read "+\
-            inputFastqFileName+" into memory",file=open(args.logFile,"a"))
-#        inputFastqList = f.readlines()
-        iterf = iter(f)
-        while True:
-            i = 0
-            thisBite = []
-            while i < biteSize:
-#                anEntry = inputFastqList[0:4]
-#                del inputFastqList[0:4]
-#                if anEntry:
-                try:
-                    anEntry = [next(iterf),next(iterf),next(iterf),next(iterf)]
-                    thisBite.append(anEntry)
-                    i += 1
-                except:
-                    break
-            if thisBite:
-                print("Queue is this big, approximately: "+str(sys.getsizeof(thisBite)*queue.qsize()),file=open(args.logFile,"a"))
-                while (sys.getsizeof(thisBite)*queue.qsize()/1000000) > int(args.maxQueueSize):
-                    print("Waiting for 10 seconds for queue to get chewed down a bit...",file=open(args.logFile,"a"))
-                    time.sleep(10)
-                queue.put(thisBite)
-                print(multiprocessing.current_process().name+\
-                    " took a bite of size "+str(len(thisBite))+", put it on queue( size "+\
-                    str(queue.qsize())+" bites)",file=open(args.logFile,"a"))
-            else:
-                for i in range(int(args.processes)+1):
-                    queue.put(None)
+            if chunk[slice_base] == "":
                 break
-    return 1
+    
+            alignChop(chunk[slice(slice_base,(slice_base+4))],
+                operations_dict)
+
+            out_lock.acquire()
+#                print(i.strip(),file=open(output_fastq,"a"))
+            out_lock.release()
+
+
+def alignChop(record,operations_dict):
+    inputRecord = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
+        id = record[0].rstrip().split(" ")[0])
+    inputRecord.letter_annotations['phred_quality'] = \
+        record[3][0:len(record[1].rstrip())]
+
+    holder = dict()
+    holder['INPUT'] = inputRecord
+
+    for operation_name, operation in operations_dict.items():
+        print(operation_name)
+#       do alignment
+#       put capture groups back in the holder
+
+#                aln1 = pairwise2.align.localmd(
+#                    inputRecord.seq, args.fixed1pattern,
+#                    args.matchScore,args.mismatchScore,
+#                    args.readGapOpenScore,args.readGapExtendScore,
+#                    args.templateGapOpenScore,args.templateGapExtendScore,
+#                    penalize_end_gaps=(True,False),
+#                    one_alignment_only=True
+#                )
+#            #    print(pairwise2.format_alignment(*aln[0]))
+#            #    print(aln[0])
+#                Score1 = round(aln1[0][2],3)
+#                AlignmentStart1 = aln1[0][3]
+#                AlignmentEnd1 = aln1[0][4]
+#            
+#                aln2 = pairwise2.align.localmd(
+#                    inputRecord.seq, args.fixed2pattern,
+#                    args.matchScore,args.mismatchScore,
+#                    args.readGapOpenScore,args.readGapExtendScore,
+#                    args.templateGapOpenScore,args.templateGapExtendScore,
+#                    penalize_end_gaps=(True,False),
+#                    one_alignment_only=True
+#                )
+#            #    print(pairwise2.format_alignment(*aln[0]))
+#            #    print(aln[0])
+#                Score2 = round(aln2[0][2],3)
+#                AlignmentStart2 = aln2[0][3]
+#                AlignmentEnd2 = aln2[0][4]
+#            
+#                indexSeq = inputRecord[0:AlignmentStart1]
+#                fixed1 = inputRecord[AlignmentStart1:AlignmentEnd1]
+#                strainSeq = inputRecord[(AlignmentEnd1-3):(AlignmentEnd1+25)]
+#                fixed2 = inputRecord[AlignmentStart2:AlignmentEnd2]
+#                tailSeq = inputRecord[AlignmentStart2:]
+#            
+#                alnUMI = pairwise2.align.localmd(
+#                    tailSeq.seq,args.umipattern,
+#                    args.matchScore,args.mismatchScore,
+#                    args.readGapOpenScore,args.readGapExtendScore,
+#                    args.templateGapOpenScore,args.templateGapExtendScore,
+#                    penalize_end_gaps=(True,False),
+#                    one_alignment_only=True
+#                )
+#            #    print(pairwise2.format_alignment(*aln[0]))
+#            #    print(aln[0])
+#                ScoreUMI = round(alnUMI[0][2],3)
+#                AlignmentStartUMI = alnUMI[0][3]
+#                AlignmentEndUMI = alnUMI[0][4]
+#        
+#                umiSeq = tailSeq[(alnUMI[0][3]):(alnUMI[0][4])]
+#            #    umiSeq = umiSeq[16:31:1]
+#            #    umiSeq = umiSeq[17:31:2]
+#                umiSeq = umiSeq[18:29:2]
+#            
+#                outputString = str(strainSeq.id)+"_"+str(umiSeq.seq)+"\n"+\
+#                    str(indexSeq.seq)+str(strainSeq.seq)+"\n"+"+"+"\n"+\
+#                    indexSeq.letter_annotations['phred_quality']+\
+#                    strainSeq.letter_annotations['phred_quality']+"\n"
+#            
+#                try:
+#                    if eval(args.filters):
+#                        outputPass.append(outputString)
+#                    else:
+#                        outputFail.append(str(inputRecord.id)+"\n"+\
+#                            str(inputRecord.seq)+"\n"+"+"+"\n"+\
+#                            inputRecord.letter_annotations['phred_quality']+"\n")
+#                except:
+#                    outputFail.append(outputString)
+#            
+#                outputReport.append(inputRecord.id+"	"+
+#                    str(Score1)+"	"+str(Score2)+"	"+str(ScoreUMI)+"	"+
+#                    str(AlignmentStart1)+"	"+str(AlignmentEnd1)+"	"+
+#                    str(AlignmentStart2)+"	"+str(AlignmentEnd2)+"	"+
+#                    str(AlignmentStartUMI)+"	"+str(AlignmentEndUMI)+"	"+
+#                    str(indexSeq.seq)+"	"+
+#                    str(fixed1.seq)+"	"+
+#                    str(strainSeq.seq)+"	"+
+#                    str(fixed2.seq)+"	"+
+#                    str(tailSeq.seq)+"\n")
+#            
+#            lock.acquire()
+#            print("\t\t"+multiprocessing.current_process().name+\
+#                " writing out bite of "+str(len(inputEntryList))+" entries",file=open(args.logFile,"a"))
+#            outputReportHandle = open(args.outputReport,"a")
+#            for i in outputReport:
+#                outputReportHandle.write(i)
+#            outputReportHandle.close()
+#            if args.filters:
+#                outputPassHandle = open(args.outputBase+"_pass.fastq","a")
+#                for i in outputPass:
+#                    outputPassHandle.write(i)
+#                outputPassHandle.close()
+#                outputFailHandle = open(args.outputBase+"_fail.fastq","a")
+#                for i in outputFail:
+#                    outputFailHandle.write(i)
+#                outputFailHandle.close()
+#            else:
+#                outputFailHandle = open(args.outputBase+"_all.fastq","a")
+#                for i in outputFail:
+#                    outputFailHandle.write(i)
+#                outputFailHandle.close()
+#            lock.release()
 
 
 
@@ -229,6 +241,18 @@ if __name__ == '__main__':
     if args.regex_gap_open is None: args.regex_gap_open = args.gap_open
     if args.regex_gap_extend is None: args.regex_gap_extend = args.gap_extend
 
+    args.bite_size = int(args.bite_size)
+
+    operations_dict = dict()
+
+    for each in args.operation:
+
+        (name, instruction) = each.split(":")
+        (input_string, regex, output_string) = instruction.strip().split(" > ")
+        inputs  = input_string.split(",")
+        outputs = output_string.split(",")
+        operations_dict[name] = [inputs, re.compile(regex), outputs]
+
 #'opname: [INPUT] > ATCG(?P<regex>regularExpression)With(?P<capgroups>NamedCaptureGroups)ATCG > [regex,capgroups]' 
 #'opname: '
 
@@ -280,40 +304,37 @@ if __name__ == '__main__':
         print("File "+vars(args)["output-base"]+".fastq "+
             "exits, so I'm quitting before you ask me to do "+
             "something you'll regret.")
+        exit(1)
     if os.path.isfile(vars(args)["output-base"]+"_report.csv"):
         print("File "+vars(args)["output-base"]+".fastq "+
             "exits, so I'm quitting before you ask me to do "+
             "something you'll regret.")
+        exit(1)
 
-    manager = multiprocessing.Manager()
-    queue = manager.Queue()
-    lock = manager.Lock()
+    #####
+    # Multi proc
+    #####
 
-
-    print("a"+args.biteSize)
-    exit(1)
+    manager  = multiprocessing.Manager()
+    input_line_queue = multiprocessing.Queue()
+    input_line_queue.put(0)
+    (out_lock, report_lock) = (manager.Lock(), manager.Lock())
 
     jobs = []
-    jobs.append(multiprocessing.Process(target=reader,\
-            args=(queue,args.inputFastq,biteSize),name="TheReader"))
-    for i in range(1,int(args.processes)):
-        jobs.append(multiprocessing.Process(target=alignChop,args=(queue,lock),\
-            name="TheChewer"+str(i)))
+    for i in range(1,int(args.processes)+1):
+        jobs.append(multiprocessing.Process(target=alignChopRead,
+            args=(input_line_queue,vars(args)["input-fastq"],
+                out_lock,vars(args)["output-base"]+".fastq",
+                report_lock,vars(args)["output-base"]+"_report.csv",
+                args.bite_size,operations_dict),
+            name="Comrade"+str(i)))
+        print("Comrade"+str(i))
 
     for i in jobs:
         i.start()
-        print(i,file=open(args.logFile,"a"))
-
-    jobs[0].join()
-    print("TheReader is done, allocating another Chewer number 0",file=open(args.logFile,"a"))
-    jobs[0] = multiprocessing.Process(target=alignChop,args=(queue,lock),\
-        name="TheChewer0")
-    jobs[0].start()
 
     for i in jobs:
         if i.is_alive():
             i.join()
 
-    print("We done here?",file=open(args.logFile,"a"))
-    for i in jobs:
-        print(i,file=open(args.logFile,"a"))
+    print("We done here?")
