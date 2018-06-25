@@ -5,7 +5,7 @@
 # Modifying to be more general.
 #
 #usage for testing
-#rm sobaseqout*; ./slapchop.py example_sobaseq.fastq sobaseqout --operation "get_sample: input > (?P<sample>[ATCG]{5})(?P<forward_prime>GTCCTCGAGGTCTCT){e<=2}(?P<rest>.*)" -o "get_strain: rest > (?P<strain>[ATCG]{10,22})GCGTACGCTGCAGGT" --filter "sample_length == 5" --write-report --bite-size 10 --processes 1 --output-seq "forward_prime+rest" --output-id "input.id+'_'+sample.seq" ; wc -l sobaseqout*
+# rm sobaseqout*; ./slapchop.py example_sobaseq.fastq sobaseqout --operation "get_sample: input > (?P<sample>[ATCG]{5})(?P<forward_prime>GTCCTCGAGGTCTCT){e<=2}(?P<rest>.*)" -o "get_strain: rest > (?P<strain>[ATCG]{10,22})GCGTACGCTGCAGGT" --filter "sample_length == 5" --write-report --bite-size 10 --processes 1 --output-seq "forward_prime+rest" --output-id "input.id+'_'+sample.seq" ; wc -l sobaseqout*
 
 import re
 import multiprocessing 
@@ -165,14 +165,23 @@ def alignChop(record,operations_dict):
                 re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
             ))
     else:
-        output_record = evaluate_output_directives(
-            args.output_seq,args.output_id,seq_holder) 
-        return((True,output_record,
-            "\"Passed\","+
-            "\""+output_record.id+"\",\""+
-                output_record.seq+"\",\""+
-                re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
-            ))
+        try:
+            output_record = evaluate_output_directives(
+                args.output_seq,args.output_id,seq_holder) 
+            return((True,output_record,
+                "\"Passed\","+
+                "\""+output_record.id+"\",\""+
+                    output_record.seq+"\",\""+
+                    re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
+                ))
+        except:
+            output_record = input_record
+            return((False,output_record,
+                "\"Failed\","+
+                "\""+input_record.id+"\",\""+
+                    input_record.seq+"\",\""+
+                    re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
+                ))
 
 
 def evaluate_output_directives(output_seq, output_id, seq_holder):
