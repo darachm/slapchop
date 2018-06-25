@@ -4,6 +4,8 @@
 #
 # Modifying to be more general.
 #
+#usage for testing
+# rm sobaseqout*; ./slapchop.py example_sobaseq.fastq sobaseqout --operation "get_sample: INPUT > (?P<sample>[ATCG]{5})(GTCCTCGAGGTCTCT){e<=2}(?P<rest>.*)$" -o "get_strain: rest > (?P<strain>[ATCG]{10,26})(GCGTACGCTGCAGGT){e<=2}.*" --filter "sample_length == 5" --write-report --bite-size 10 --processes 2; wc -l sobaseqout*
 
 import re
 import multiprocessing 
@@ -14,8 +16,9 @@ import sys
 import time
 import os.path
 from Bio import Seq, SeqRecord, pairwise2, SeqIO
+import regex
 
-def alignChopRead(input_line_queue,input_fastq,
+def reader(input_line_queue,input_fastq,
                     out_lock,output_fastq,
                     report_lock,report_csv,
                     bite_size,operations_dict):
@@ -73,6 +76,7 @@ def alignChopRead(input_line_queue,input_fastq,
 
 
 def alignChop(record,operations_dict):
+
     inputRecord = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
         id = record[0].rstrip().split(" ")[0])
     inputRecord.letter_annotations['phred_quality'] = \
@@ -80,93 +84,50 @@ def alignChop(record,operations_dict):
 
     scores_holder = dict()
     seq_holder = dict()
-    seq_holder['INPUT'] = [ inputRecord ]
+    seq_holder['INPUT'] = inputRecord 
 #rewrite as a class
-
-    print()
 
     for operation_name, operation in operations_dict.items():
 
         try:
-            if len(seq_holder[operation[0].upper()]) == 0:
+            if len(seq_holder[operation[0]]) == 0:
                 continue
         except:
             continue
 
-        aln = pairwise2.align.localmd(
-            seq_holder[operation[0].upper()][0].seq, # the input seq
+        fuzzy_match = regex.search(
             operation[1], # the seq_pattern to match
-            args.match_score, args.mismatch_score,
-            args.read_gap_open, args.read_gap_extend,
-            args.seq_pattern_gap_open, args.seq_pattern_gap_extend,
-            penalize_end_gaps=(True,False),
-            one_alignment_only=True
-        )[0]
+            str(seq_holder[operation[0]].seq), # the input seq 
+            regex.BESTMATCH )
 
-        scores_holder[operation_name] = aln[2:len(aln)]
-
-        regex_match = operation[2].search(aln[0][aln[3]:aln[4]])
-        if regex_match is None:
+        if fuzzy_match is None:
             continue
         else:
-            for match_name in regex_match.groupdict():
+            (scores_holder[operation_name+'_substitutions'],
+                scores_holder[operation_name+'_insertions'],
+                scores_holder[operation_name+'_deletions']
+                ) = fuzzy_match.fuzzy_counts
+            for match_name in fuzzy_match.groupdict():
                 seq_holder[match_name] = \
-                    seq_holder[operation[0].upper()][0]\
-                    [slice(*regex_match.span(match_name))]
-    
+                    seq_holder[operation[0]]\
+                    [slice(*fuzzy_match.span(match_name))]
+                (scores_holder[match_name+'_start'],
+                    scores_holder[match_name+'_end']
+                    ) = fuzzy_match.span(match_name)
+                scores_holder[match_name+'_length'] = \
+                    (scores_holder[match_name+'_end'] - 
+                        scores_holder[match_name+'_start'])
 
-    print(seq_holder)
+    evaluated_filters = evaluate_filters(args.filter,scores_holder)
 
-
-#            #    print(pairwise2.format_alignment(*aln[0]))
-#            #    print(aln[0])
-#                Score1 = round(aln1[0][2],3)
-#                AlignmentStart1 = aln1[0][3]
-#                AlignmentEnd1 = aln1[0][4]
-#            
-#                aln2 = pairwise2.align.localmd(
-#                    inputRecord.seq, args.fixed2pattern,
-#                    args.matchScore,args.mismatchScore,
-#                    args.readGapOpenScore,args.readGapExtendScore,
-#                    args.templateGapOpenScore,args.templateGapExtendScore,
-#                    penalize_end_gaps=(True,False),
-#                    one_alignment_only=True
-#                )
-#            #    print(pairwise2.format_alignment(*aln[0]))
-#            #    print(aln[0])
-#                Score2 = round(aln2[0][2],3)
-#                AlignmentStart2 = aln2[0][3]
-#                AlignmentEnd2 = aln2[0][4]
-#            
-#                indexSeq = inputRecord[0:AlignmentStart1]
-#                fixed1 = inputRecord[AlignmentStart1:AlignmentEnd1]
-#                strainSeq = inputRecord[(AlignmentEnd1-3):(AlignmentEnd1+25)]
-#                fixed2 = inputRecord[AlignmentStart2:AlignmentEnd2]
-#                tailSeq = inputRecord[AlignmentStart2:]
-#            
-#                alnUMI = pairwise2.align.localmd(
-#                    tailSeq.seq,args.umipattern,
-#                    args.matchScore,args.mismatchScore,
-#                    args.readGapOpenScore,args.readGapExtendScore,
-#                    args.templateGapOpenScore,args.templateGapExtendScore,
-#                    penalize_end_gaps=(True,False),
-#                    one_alignment_only=True
-#                )
-#            #    print(pairwise2.format_alignment(*aln[0]))
-#            #    print(aln[0])
-#                ScoreUMI = round(alnUMI[0][2],3)
-#                AlignmentStartUMI = alnUMI[0][3]
-#                AlignmentEndUMI = alnUMI[0][4]
-#        
-#                umiSeq = tailSeq[(alnUMI[0][3]):(alnUMI[0][4])]
-#            #    umiSeq = umiSeq[16:31:1]
-#            #    umiSeq = umiSeq[17:31:2]
-#                umiSeq = umiSeq[18:29:2]
-#            
-#                outputString = str(strainSeq.id)+"_"+str(umiSeq.seq)+"\n"+\
-#                    str(indexSeq.seq)+str(strainSeq.seq)+"\n"+"+"+"\n"+\
-#                    indexSeq.letter_annotations['phred_quality']+\
-#                    strainSeq.letter_annotations['phred_quality']+"\n"
+    if not all(evaluated_filters):
+        pass
+    else:
+        print("WRITE OUT")
+#        outputString = str(strainSeq.id)+"_"+str(umiSeq.seq)+"\n"+\
+#            str(indexSeq.seq)+str(strainSeq.seq)+"\n"+"+"+"\n"+\
+#            indexSeq.letter_annotations['phred_quality']+\
+#            strainSeq.letter_annotations['phred_quality']+"\n"
 #            
 #                try:
 #                    if eval(args.filters):
@@ -212,6 +173,21 @@ def alignChop(record,operations_dict):
 #                outputFailHandle.close()
 #            lock.release()
 
+def evaluate_filters(filters,scores_holder):
+    locals().update(scores_holder)
+    return_object = []
+    try:
+        for each_filter in filters:
+            if eval(each_filter):
+                return_object.append(True)
+            else:
+                return_object.append(each_filter)
+    except:
+        return([False])
+    return(return_object)
+
+
+
 
 
 #####
@@ -250,6 +226,9 @@ if __name__ == '__main__':
     parser.add_argument("--seq_pattern-gap-open",default=None)
     parser.add_argument("--seq_pattern-gap-extend",default=None)
 #
+    parser.add_argument("--output-format",
+        help="format for the output file")
+#
     parser.add_argument("output-base",
         help="Base name for the output, will be used to make, "+
             "for example: basename.fastq, basename.report")
@@ -267,26 +246,15 @@ if __name__ == '__main__':
 
     args.bite_size = int(args.bite_size)
 
+#####
+
     operations_dict = dict()
 
     for each in args.operation:
 
         (name, instruction) = each.split(":")
-        (input_string, seq_pattern) = instruction.strip().split(" > ")
-        converted_to_seq = re.sub(
-            "[^ATCGN]",
-            "",
-            re.sub(
-                "\(\?P<[^>]+>([^\)]+)\)",
-                "\\1",
-                seq_pattern.upper())
-            ) 
-        converted_to_regex = seq_pattern.upper()
-        while re.search("N[^>]*(?:[^>]|$)",converted_to_regex) is not None:
-            converted_to_regex = re.sub("N([^>]*(?:[^>]|$))","[ACTG]\\1",converted_to_regex)
-        operations_dict[name] = [input_string, 
-            converted_to_seq,
-            re.compile(converted_to_regex)]
+        (input_string, regex_string) = instruction.strip().split(" > ")
+        operations_dict[name] = [input_string, regex_string]
 
     # FIRST, report what we're doing.
     print()
@@ -296,20 +264,24 @@ if __name__ == '__main__':
         for key, value in operations_dict.items():
             print("\t"+key+":"+
                 "\n\t\tfrom : "+value[0]+
-                "\n\t\tsequence pattern : "+value[1]+
-                "\n\t\textract groups with regex : "+str(value[2])+
-                "\n"
-                )
+                "\n\t\textract groups with regex : '"+value[1]+"'"+
+                "\n")
     except:
         print("Wait a second, there's no operations to be done! "+
             "Exiting...")
         exit(1)
+
+#####
+
     print("...and with these filters:")
     try:
         for i in args.filter:
             print("\t"+i)
     except:
         print("\t( # no filters defined )")
+
+#####
+
     print()
     print("I'm going to use these parameters for the alignments:")
     print("Match "+str(args.match_score)+", "+
@@ -357,7 +329,7 @@ if __name__ == '__main__':
 
     jobs = []
     for i in range(1,int(args.processes)+1):
-        jobs.append(multiprocessing.Process(target=alignChopRead,
+        jobs.append(multiprocessing.Process(target=reader,
             args=(input_line_queue,vars(args)["input-fastq"],
                 out_lock,vars(args)["output-base"]+".fastq",
                 report_lock,vars(args)["output-base"]+"_report.csv",
