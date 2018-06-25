@@ -78,22 +78,46 @@ def alignChop(record,operations_dict):
     inputRecord.letter_annotations['phred_quality'] = \
         record[3][0:len(record[1].rstrip())]
 
-    holder = dict()
-    holder['INPUT'] = inputRecord
+    scores_holder = dict()
+    seq_holder = dict()
+    seq_holder['INPUT'] = [ inputRecord ]
+#rewrite as a class
+
+    print()
 
     for operation_name, operation in operations_dict.items():
-        print(operation_name)
-#       do alignment
-#       put capture groups back in the holder
 
-#                aln1 = pairwise2.align.localmd(
-#                    inputRecord.seq, args.fixed1pattern,
-#                    args.matchScore,args.mismatchScore,
-#                    args.readGapOpenScore,args.readGapExtendScore,
-#                    args.templateGapOpenScore,args.templateGapExtendScore,
-#                    penalize_end_gaps=(True,False),
-#                    one_alignment_only=True
-#                )
+        try:
+            if len(seq_holder[operation[0].upper()]) == 0:
+                continue
+        except:
+            continue
+
+        aln = pairwise2.align.localmd(
+            seq_holder[operation[0].upper()][0].seq, # the input seq
+            operation[1], # the seq_pattern to match
+            args.match_score, args.mismatch_score,
+            args.read_gap_open, args.read_gap_extend,
+            args.seq_pattern_gap_open, args.seq_pattern_gap_extend,
+            penalize_end_gaps=(True,False),
+            one_alignment_only=True
+        )[0]
+
+        scores_holder[operation_name] = aln[2:len(aln)]
+
+        regex_match = operation[2].search(aln[0][aln[3]:aln[4]])
+        if regex_match is None:
+            continue
+        else:
+            for match_name in regex_match.groupdict():
+                seq_holder[match_name] = \
+                    seq_holder[operation[0].upper()][0]\
+                    [slice(*regex_match.span(match_name))]
+    
+
+    print(seq_holder)
+
+
 #            #    print(pairwise2.format_alignment(*aln[0]))
 #            #    print(aln[0])
 #                Score1 = round(aln1[0][2],3)
@@ -223,8 +247,8 @@ if __name__ == '__main__':
     parser.add_argument("--gap-extend",default=-1)
     parser.add_argument("--read-gap-open",default=None)
     parser.add_argument("--read-gap-extend",default=None)
-    parser.add_argument("--regex-gap-open",default=None)
-    parser.add_argument("--regex-gap-extend",default=None)
+    parser.add_argument("--seq_pattern-gap-open",default=None)
+    parser.add_argument("--seq_pattern-gap-extend",default=None)
 #
     parser.add_argument("output-base",
         help="Base name for the output, will be used to make, "+
@@ -238,8 +262,8 @@ if __name__ == '__main__':
 
     if args.read_gap_open is None: args.read_gap_open = args.gap_open
     if args.read_gap_extend is None: args.read_gap_extend = args.gap_extend
-    if args.regex_gap_open is None: args.regex_gap_open = args.gap_open
-    if args.regex_gap_extend is None: args.regex_gap_extend = args.gap_extend
+    if args.seq_pattern_gap_open is None: args.seq_pattern_gap_open = args.gap_open
+    if args.seq_pattern_gap_extend is None: args.seq_pattern_gap_extend = args.gap_extend
 
     args.bite_size = int(args.bite_size)
 
@@ -248,28 +272,39 @@ if __name__ == '__main__':
     for each in args.operation:
 
         (name, instruction) = each.split(":")
-        (input_string, regex, output_string) = instruction.strip().split(" > ")
-        inputs  = input_string.split(",")
-        outputs = output_string.split(",")
-        operations_dict[name] = [inputs, re.compile(regex), outputs]
+        (input_string, seq_pattern) = instruction.strip().split(" > ")
+        converted_to_seq = re.sub(
+            "[^ATCGN]",
+            "",
+            re.sub(
+                "\(\?P<[^>]+>([^\)]+)\)",
+                "\\1",
+                seq_pattern.upper())
+            ) 
+        converted_to_regex = seq_pattern.upper()
+        while re.search("N[^>]*(?:[^>]|$)",converted_to_regex) is not None:
+            converted_to_regex = re.sub("N([^>]*(?:[^>]|$))","[ACTG]\\1",converted_to_regex)
+        operations_dict[name] = [input_string, 
+            converted_to_seq,
+            re.compile(converted_to_regex)]
 
-#'opname: [INPUT] > ATCG(?P<regex>regularExpression)With(?P<capgroups>NamedCaptureGroups)ATCG > [regex,capgroups]' 
-#'opname: '
-
-#[('input-fastq', 'zerp'), ('processes', 1), ('bite_size', 1000), ('operation', ['XYZ', '123']), ('filter', None), ('mismatch_score', 0.001), ('gap_open', -1), ('gap_extend', -1), ('read_gap_open', -1), ('read_gap_extend', -1), ('regex_gap_open', -1), ('regex_gap_extend', -1), ('output-base', 'output'), ('write_report', False), ('maxQueueSize', 10)])
-    
     # FIRST, report what we're doing.
     print()
     print("I'm reading in '"+vars(args)["input-fastq"]+"', "+
         "applying these operations of alignment:")
     try:
-        for i in args.operation:
-            print("\t"+i)
+        for key, value in operations_dict.items():
+            print("\t"+key+":"+
+                "\n\t\tfrom : "+value[0]+
+                "\n\t\tsequence pattern : "+value[1]+
+                "\n\t\textract groups with regex : "+str(value[2])+
+                "\n"
+                )
     except:
         print("Wait a second, there's no operations to be done! "+
             "Exiting...")
         exit(1)
-    print("... with these filters:")
+    print("...and with these filters:")
     try:
         for i in args.filter:
             print("\t"+i)
@@ -281,8 +316,8 @@ if __name__ == '__main__':
         "mismatch "+str(args.mismatch_score)+", "+
         "read gap open "+str(args.read_gap_open)+", "+
         "read gap extend "+str(args.read_gap_extend)+", "+
-        "regex gap open "+str(args.regex_gap_open)+", "+
-        "regex gap extend "+str(args.regex_gap_extend)+".")
+        "pattern gap open "+str(args.seq_pattern_gap_open)+", "+
+        "pattern gap extend "+str(args.seq_pattern_gap_extend)+".")
     print()
     print("Then, I'm going to write out a FASTQ file to '"+
         vars(args)["output-base"]+".fastq'",end="")
