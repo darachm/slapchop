@@ -18,6 +18,7 @@ import os.path
 from Bio import Seq, SeqRecord, SeqIO
 import regex
 import json
+import collections
 
 def reader(input_line_queue,input_fastq,
                     pass_lock,pass_fastq,
@@ -30,38 +31,55 @@ def reader(input_line_queue,input_fastq,
 
         current_pos = input_line_queue.get()
 
-        if current_pos == "poisonpill":
-            input_line_queue.put("poisonpill")
+        try:
+            if current_pos == "poisonpill":
+                report_lock.acquire()
+                print(multiprocessing.current_process().name+
+                        " with pid "+
+                        str(multiprocessing.current_process().pid)+
+                        " found a poison pill and is done",
+                    file=open(report_txt,"a"))
+                report_lock.release()
+                input_line_queue.put("poisonpill")
+                return(0)
+        except:
+            try:
+                report_lock.release()
+            except:
+                return(0)
             return(0)
 
-        report_lock.acquire()
-        print(multiprocessing.current_process().name+
-            " trying to read into memory chunk of size "+
-            str(bite_size)+" records.",
-            file=open(report_txt,"a"))
-        report_lock.release()
+        try:
+            report_lock.acquire()
+            print(multiprocessing.current_process().name+
+                " trying to read a chunk of size "+
+                str(bite_size)+" fastq records.",
+                file=open(report_txt,"a"))
+            report_lock.release()
+        except:
+            try:
+                report_lock.release()
+            except:
+                pass
+            pass
 
         ifqp = open(input_fastq,"r")
         ifqp.seek(current_pos)
         chunk = []
         for i in range(bite_size*4):
             chunk.append(ifqp.readline())
-#                try:
-#                    anEntry = [next(iterf),next(iterf),next(iterf),next(iterf)]
-#                    thisBite.append(anEntry)
-#                    i += 1
-#                except:
-#                    break
-
 
         current_pos = ifqp.tell()
         if ifqp.readline() == "":
             input_line_queue.put("poisonpill")
             report_lock.acquire()
-            print(multiprocessing.current_process().name+\
-                str(multiprocessing.current_process().pid)+
-                " is done",file=open(report_txt,"a"))
+            print(multiprocessing.current_process().name+
+                    " with pid "+
+                    str(multiprocessing.current_process().pid)+
+                    " found the end and is done",
+                file=open(report_txt,"a"))
             report_lock.release()
+            return(0)
         else:
             input_line_queue.put(current_pos)
 
@@ -76,7 +94,7 @@ def reader(input_line_queue,input_fastq,
     
             (passed, output_record, report_object) = \
                 alignChop(chunk[slice(slice_base,(slice_base+4))],
-                    operations_dict)
+                    operations_dict,report_txt)
 
             if passed:
                 pass_records.append(output_record)
@@ -108,8 +126,11 @@ def reader(input_line_queue,input_fastq,
                 print(i,file=f)
         record_lock.release()
 
+        if args.debug:
+            return(0)
 
-def alignChop(record,operations_dict):
+
+def alignChop(record,operations_dict,report_txt):
 
     input_record = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
         id = record[0].rstrip().split(" ")[0])
@@ -122,18 +143,63 @@ def alignChop(record,operations_dict):
 
 #rewrite as a class ????
 
+    try:
+        if args.debug:
+            report_lock.acquire()
+            print(multiprocessing.current_process().name+
+                " processing:\n"+
+                input_record.seq,
+                file=open(report_txt,"a"))
+            report_lock.release()
+    except:
+        try:
+            report_lock.release()
+        except:
+            pass
+        pass
+
     for operation_name, operation in operations_dict.items():
 
         try:
+            if args.debug:
+                report_lock.acquire()
+                print(multiprocessing.current_process().name+
+                    " attempting to match :\n"+
+                    operation[1],end="",
+                    file=open(report_txt,"a"))
+                print(" against "+
+                    str(seq_holder[operation[0]].seq),
+                    file=open(report_txt,"a"))
+                report_lock.release()
+
             if len(seq_holder[operation[0]]) == 0:
                 continue
+
         except:
+            try:
+                report_lock.release()
+            except:
+                pass
             continue
 
         fuzzy_match = regex.search(
             operation[1], # the seq_pattern to match
             str(seq_holder[operation[0]].seq), # the input seq 
             regex.BESTMATCH )
+
+        try:
+            if args.debug:
+                report_lock.acquire()
+                print(multiprocessing.current_process().name+
+                    " match is :\n"+
+                    str(fuzzy_match),
+                    file=open(report_txt,"a"))
+                report_lock.release()
+        except:
+            try:
+                report_lock.release()
+            except:
+                pass
 
         if fuzzy_match is None:
             continue
@@ -155,11 +221,26 @@ def alignChop(record,operations_dict):
 
     evaluated_filters = evaluate_filters(args.filter,scores_holder)
 
+    try:
+        if args.debug:
+            report_lock.acquire()
+            print(multiprocessing.current_process().name+
+                " evaluated filters is :\n"+
+                evaluated_filters,
+                file=open(report_txt,"a"))
+            report_lock.release()
+    except:
+        try:
+            report_lock.release()
+        except:
+            pass
+        pass
+
 
     if not all(evaluated_filters):
         output_record = input_record
         return((False,output_record,
-            "\"Failed\","+
+            "\"FailedFilter\","+
             "\""+input_record.id+"\",\""+
                 input_record.seq+"\",\""+
                 re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
@@ -177,7 +258,7 @@ def alignChop(record,operations_dict):
         except:
             output_record = input_record
             return((False,output_record,
-                "\"Failed\","+
+                "\"FailedEvalOutDirectives\","+
                 "\""+input_record.id+"\",\""+
                     input_record.seq+"\",\""+
                     re.sub("\"","\\\"",re.sub(",","\,",json.dumps(scores_holder)))+"\""
@@ -221,6 +302,8 @@ if __name__ == '__main__':
         help="The size of bites to chomp off of the input file for multi-process",
         default=1000)
 #
+    parser.add_argument("--debug",action="store_true")
+#
     parser.add_argument("--operation","-o",action="append",
         help="The pattern to match and extract. This has a "+
             "specific and sort of complicated syntax. To remind "+
@@ -257,7 +340,7 @@ if __name__ == '__main__':
 
 #####
 
-    operations_dict = dict()
+    operations_dict = collections.OrderedDict()
 
     for each in args.operation:
 
