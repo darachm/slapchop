@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 
-# Simply Looking At Pairwise Comparisons to Optimally Parition
+# 
+# description to be written ...
 #
-# Modifying to be more general.
-#
-#usage for testing
-# rm sobaseqout*; ./slapchop.py example_sobaseq.fastq sobaseqout --operation "get_sample: input > (?P<sample>[ATCG]{5})(?P<forward_prime>GTCCTCGAGGTCTCT){e<=2}(?P<rest>.*)" -o "get_strain: rest > (?P<strain>[ATCG]{10,22})GCGTACGCTGCAGGT" --filter "sample_length == 5" --write-report --bite-size 10 --processes 1 --output-seq "forward_prime+rest" --output-id "input.id+'_'+sample.seq" ; wc -l sobaseqout*
 
 import re
 import multiprocessing 
 import itertools
 import argparse
-import subprocess
-import sys
-import time
+#import subprocess
+#import sys
+#import time
 import os.path
 from Bio import Seq, SeqRecord, SeqIO
 import regex
