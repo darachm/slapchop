@@ -160,9 +160,13 @@ def chop(
     input_record.letter_annotations['phred_quality'] = \
         record[3][0:len(record[1].rstrip())]
 
+    # Making a spacer thing
+    spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
+    spacer.letter_annotations['phred_quality'] = ["I"]
+
     # We make some holders for these operations
     scores_holder = dict()
-    seq_holder = dict()
+    seq_holder = {'spacer': spacer}
     seq_holder['input'] = input_record 
 
 #rewrite as a class ????
@@ -379,7 +383,8 @@ if __name__ == '__main__':
             "specific and sort of complicated syntax. Refer to "+
             "the documentation via the README.md file, or to "+
             "the original regex module documentation. "+
-            "They are chained in the order you specify.")
+            "They are chained in the order you specify. "+
+            "You can't name a group 'input' or 'spacer' !")
 
     # Filter specification
     parser.add_argument("--filter","-f",action="append",
