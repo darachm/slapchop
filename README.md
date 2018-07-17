@@ -63,15 +63,16 @@ into records like this:
     +
     EEAEEAEEAEEEEE/EEE/E
 
-The sample barcode is the first five, and the UMI is interspersed 
-downstream. 
+The sample barcode is the first five, the strain barcode starts after
+the `TCT`, and the UMI is interspersed downstream. This is modified
+yeast BarSeq.
 
 ---
 
-This script leans strongly on the work of:
-
-    - [regex](https://pypi.org/project/regex/)
-    - [Biopython](https://pypi.org/project/biopython/)
+This script leans strongly on the work of 
+[regex](https://pypi.org/project/regex/)
+and
+[Biopython](https://pypi.org/project/biopython/).
 
 ---
 
