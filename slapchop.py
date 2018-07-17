@@ -8,9 +8,6 @@ import re
 import multiprocessing 
 import itertools
 import argparse
-#import subprocess
-#import sys
-#import time
 import os.path
 from Bio import Seq, SeqRecord, SeqIO
 import regex
@@ -28,37 +25,21 @@ def reader(input_line_queue,input_fastq,
 
         current_pos = input_line_queue.get()
 
-        try:
-            if current_pos == "poisonpill":
-                report_lock.acquire()
+        if current_pos == "poisonpill":
+            with report_lock:
                 print(multiprocessing.current_process().name+
                         " with pid "+
                         str(multiprocessing.current_process().pid)+
                         " found a poison pill and is done",
                     file=open(report_txt,"a"))
-                report_lock.release()
-                input_line_queue.put("poisonpill")
-                return(0)
-        except:
-            try:
-                report_lock.release()
-            except:
-                return(0)
+            input_line_queue.put("poisonpill")
             return(0)
 
-        try:
-            report_lock.acquire()
+        with report_lock:
             print(multiprocessing.current_process().name+
                 " trying to read a chunk of size "+
                 str(bite_size)+" fastq records.",
                 file=open(report_txt,"a"))
-            report_lock.release()
-        except:
-            try:
-                report_lock.release()
-            except:
-                pass
-            pass
 
         ifqp = open(input_fastq,"r")
         ifqp.seek(current_pos)
@@ -68,14 +49,13 @@ def reader(input_line_queue,input_fastq,
 
         current_pos = ifqp.tell()
         if ifqp.readline() == "":
+            with report_lock:
+                print(multiprocessing.current_process().name+
+                        " with pid "+
+                        str(multiprocessing.current_process().pid)+
+                        " found the end and is done",
+                    file=open(report_txt,"a"))
             input_line_queue.put("poisonpill")
-            report_lock.acquire()
-            print(multiprocessing.current_process().name+
-                    " with pid "+
-                    str(multiprocessing.current_process().pid)+
-                    " found the end and is done",
-                file=open(report_txt,"a"))
-            report_lock.release()
             return(0)
         else:
             input_line_queue.put(current_pos)
@@ -101,27 +81,24 @@ def reader(input_line_queue,input_fastq,
             report_records.append(report_object)
 
         
-        pass_lock.acquire()
-        with open(pass_fastq,"a") as f:
-            for i in pass_records:
-                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                        i.letter_annotations['phred_quality']+"\n",
-                    file=f)
-        pass_lock.release()
+        with pass_lock:
+            with open(pass_fastq,"a") as f:
+                for i in pass_records:
+                    print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
+                            i.letter_annotations['phred_quality']+"\n",
+                        file=f)
 
-        fail_lock.acquire()
-        with open(fail_fastq,"a") as f:
-            for i in fail_records:
-                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                        i.letter_annotations['phred_quality']+"\n",
-                    file=f)
-        fail_lock.release()
+        with fail_lock:
+            with open(fail_fastq,"a") as f:
+                for i in fail_records:
+                    print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
+                            i.letter_annotations['phred_quality']+"\n",
+                        file=f)
 
-        record_lock.acquire()
-        with open(record_csv,"a") as f:
-            for i in report_records:
-                print(i,file=f)
-        record_lock.release()
+        with record_lock:
+            with open(record_csv,"a") as f:
+                for i in report_records:
+                    print(i,file=f)
 
         if args.debug:
             return(0)
@@ -140,26 +117,17 @@ def alignChop(record,operations_dict,report_txt):
 
 #rewrite as a class ????
 
-    try:
-        if args.debug:
-            report_lock.acquire()
+    if args.debug:
+        with report_lock:
             print(multiprocessing.current_process().name+
                 " processing:\n"+
                 input_record.seq,
                 file=open(report_txt,"a"))
-            report_lock.release()
-    except:
-        try:
-            report_lock.release()
-        except:
-            pass
-        pass
 
     for operation_name, operation in operations_dict.items():
 
-        try:
-            if args.debug:
-                report_lock.acquire()
+        if args.debug:
+            with report_lock:
                 print(multiprocessing.current_process().name+
                     " attempting to match :\n"+
                     operation[1],end="",
@@ -167,16 +135,8 @@ def alignChop(record,operations_dict,report_txt):
                 print(" against "+
                     str(seq_holder[operation[0]].seq),
                     file=open(report_txt,"a"))
-                report_lock.release()
 
-            if len(seq_holder[operation[0]]) == 0:
-                continue
-
-        except:
-            try:
-                report_lock.release()
-            except:
-                pass
+        if operation[0] not in seq_holder.keys():
             continue
 
         fuzzy_match = regex.search(
@@ -184,19 +144,12 @@ def alignChop(record,operations_dict,report_txt):
             str(seq_holder[operation[0]].seq), # the input seq 
             regex.BESTMATCH )
 
-        try:
-            if args.debug:
-                report_lock.acquire()
+        if args.debug:
+            with report_lock:
                 print(multiprocessing.current_process().name+
                     " match is :\n"+
                     str(fuzzy_match),
                     file=open(report_txt,"a"))
-                report_lock.release()
-        except:
-            try:
-                report_lock.release()
-            except:
-                pass
 
         if fuzzy_match is None:
             continue
@@ -218,20 +171,12 @@ def alignChop(record,operations_dict,report_txt):
 
     evaluated_filters = evaluate_filters(args.filter,scores_holder)
 
-    try:
-        if args.debug:
-            report_lock.acquire()
+    if args.debug:
+        with report_lock:
             print(multiprocessing.current_process().name+
                 " evaluated filters is :\n"+
                 evaluated_filters,
                 file=open(report_txt,"a"))
-            report_lock.release()
-    except:
-        try:
-            report_lock.release()
-        except:
-            pass
-        pass
 
 
     if not all(evaluated_filters):
@@ -290,28 +235,38 @@ def evaluate_filters(filters,scores_holder):
 
 if __name__ == '__main__':
 
+#### defining arguments with argparse module
+
+    # Name and description
     parser = argparse.ArgumentParser(description=""+
         "slapchop.py")
     parser.add_argument("input-fastq",
         help="The FASTQ formatted file to process.")
+
+    # Resources details
     parser.add_argument("--processes",default=1)
     parser.add_argument("--bite-size",
         help="The size of bites to chomp off of the input file for multi-process",
         default=1000)
-#
-    parser.add_argument("--debug",action="store_true")
-#
+    parser.add_argument("--limit",default=None)
+
+    # verbosity
+    parser.add_argument("-v","--verbose",action="count",default=0)
+
+    # Operations
     parser.add_argument("--operation","-o",action="append",
         help="The pattern to match and extract. This has a "+
-            "specific and sort of complicated syntax. To remind "+
-            "you, its pretty much like: ''."+
-            "YOU CAN STORE MULTIPLE, and just wire the outputs to "+
-            "inputs to build chains of operations.")
+            "specific and sort of complicated syntax. Refer to "+
+            "the documentation via the README.md file."+
+            "They are chained in the order you specify.")
+
+    # Filter specification
     parser.add_argument("--filter","-f",action="append",
         help="A filter for eliminating reads that don't pass some "+
             "alignment based cutoff. This is specified per "+
             "operation, so remember the name from above. Syntax: ''")
-#
+
+    # Output stream
     parser.add_argument("--output-id",
         help="format for the output file id, per read that passes "+
             "filter",
@@ -320,23 +275,28 @@ if __name__ == '__main__':
         help="format for the output file seq, per read that "+
             "passes filter",
         default="input")
-#
+
+    # Output files
     parser.add_argument("output-base",
         help="Base name for the output, will be used to make, "+
             "for example: basename.fastq, basename.report")
     parser.add_argument("--write-report",action='store_true',
         help="Add this flag to print a report of per-read "+
-            "statistics, that's a lot of disk writes btw.")
+            "statistics, that's a lot of disk writes btw, but "+
+            "would be good in combination with a --limit argument "+
+            "so that you can spec out the kinds of noise you got "+
+            "in your data.")
     parser.add_argument("--maxQueueSize",help="in gigs",default=10)
-#
-    args=parser.parse_args()
 
-#####
+#### Parse and clean up arguments
 
+    args = parser.parse_args()
+
+    # Convert to integer so I don't have to later
     args.bite_size = int(args.bite_size)
 
-#####
-
+    # I need it to be an ordered dict to keep track of when the
+    # operations occur, what order 
     operations_dict = collections.OrderedDict()
 
     for each in args.operation:
@@ -345,10 +305,11 @@ if __name__ == '__main__':
         (input_string, regex_string) = instruction.strip().split(" > ")
         operations_dict[name] = [input_string, regex_string]
 
-    # FIRST, report what we're doing.
-    print()
-    print("I'm reading in '"+vars(args)["input-fastq"]+"', "+
-        "applying these operations of alignment:")
+    if args.verbose > 0:
+        print()
+        print("I'm reading in '"+vars(args)["input-fastq"]+"', "+
+            "applying these operations of alignment:")
+
     try:
         for key, value in operations_dict.items():
             print("\t"+key+":"+
