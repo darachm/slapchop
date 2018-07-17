@@ -12,7 +12,6 @@ import os.path
 from Bio import Seq, SeqRecord, SeqIO
 import regex
 import json
-import collections
 
 def reader(input_line_queue,input_fastq,
                     pass_lock,pass_fastq,
@@ -295,81 +294,98 @@ if __name__ == '__main__':
             "in your data.")
     parser.add_argument("--maxQueueSize",help="in gigs",default=10)
 
-#### Parse and clean up arguments
+#### Parse, clean up, and possibly report arguments
 
     args = parser.parse_args()
 
     # Convert to integer so I don't have to later
     args.bite_size = int(args.bite_size)
+    try:
+        args.limit = int(args.limit)
+    except:
+        pass
 
-    # I need it to be an ordered dict to keep track of when the
-    # operations occur, what order 
-    operations_dict = collections.OrderedDict()
+    # Operations are read as an array of dicts to keep it ordered
+    operations_array = []
 
-    for each in args.operation:
-
-        (name, instruction) = each.split(":")
-        (input_string, regex_string) = instruction.strip().split(" > ")
-        operations_dict[name] = [input_string, regex_string]
+    try:
+        for each in args.operation:
+            # Split on the colon to specify the name on the left of it
+            (name, instruction) = each.split(":")
+            # similarly use the ` > ` to specify the flow of input to
+            # the regex
+            (input_string, regex_string) = instruction.strip().split(" > ")
+            # append that to the operations array
+            operations_array.append( [name, input_string, regex_string] )
+    except:
+        # Failure likely from lack of operations to do
+        print("Wait a second, there's no operations to be done! "+
+            "What am I doing here? What is my purpose? "+
+            "As they said in Darkstar: 'Let there be light.' "+
+            "Exiting...")
+        exit(1)
 
     if args.verbose > 0:
         print()
         print("I'm reading in '"+vars(args)["input-fastq"]+"', "+
-            "applying these operations of alignment:")
+            "applying these operations of alignment :\n")
+        for each in operations_array:
+            print("- "+each[0]+" :\n"+
+                "  from : "+each[1]+"\n"+
+                "  extract groups with regex : '"+each[2]+"'\n")
 
-    try:
-        for key, value in operations_dict.items():
-            print("\t"+key+":"+
-                "\n\t\tfrom : "+value[0]+
-                "\n\t\textract groups with regex : '"+value[1]+"'"+
-                "\n")
-    except:
-        print("Wait a second, there's no operations to be done! "+
-            "Exiting...")
+    if args.verbose > 0:
+        print("...and with these filters:")
+        try:
+            for i in args.filter:
+                print("  "+i)
+        except:
+            print("  ( no filters defined )")
+
+    if args.verbose > 0:
+        print()
+        print("Then, I'm going to write out a FASTQ file to '"+
+            vars(args)["output-base"]+".fastq'",end="")
+        if args.write_report:
+            print(" and a report to '"+
+                vars(args)["output-base"]+"_report.csv'",end="")
+        print(".")
+
+    if args.verbose > 0:
+        print()
+        print("I will proceed to process the file with "+
+            str(args.processes)+" processes operating in chunks of "+
+            str(args.bite_size)+" records.")
+
+        if args.limit is not None:
+            print("But, I am limiting myself to the first "+
+                str(args.limit)+" records for this run.")
+        
+    # checking file existance for outputs, zipping together the 
+    # output base with each of the three. 
+    exit_flag = 0
+    for each in zip( [vars(args)["output-base"]]*5,             \
+                    ["_fail.fastq", "_pass.fastq",              \
+                        "_report.fastq", "_record.csv",         \
+                        "_log.txt" ] ):
+        this_path = ''.join(each)
+        if os.path.isfile(this_path) and              \
+                not( not(args.write_report) and       \
+                    (this_path.find("_report")>=0) ):
+            print()
+            print("File "+this_path+
+                " exits, so I'm quitting before you ask me to do "+
+                "something you might regret.")
+            exit_flag = 1
+    if exit_flag == 1:
         exit(1)
 
-#####
-
-    print("...and with these filters:")
-    try:
-        for i in args.filter:
-            print("\t"+i)
-    except:
-        print("\t( # no filters defined )")
-
-#####
-
-    print()
-    print("Then, I'm going to write out a FASTQ file to '"+
-        vars(args)["output-base"]+".fastq'",end="")
-    if args.write_report:
-        print(" and a report to '"+
-            vars(args)["output-base"]+"_report.csv'",end="")
-    print(".")
-
-    print()
-    print("I will proceed to process the file with "+
-        str(args.processes)+" processes operating in chunks of "+
-        str(args.bite_size)+" records.")
+    if args.verbose > 0:
+        print()
+        print("BEGIN")
+        print()
     
-    print()
-    print("BEGIN")
-    print()
-    
-    if os.path.isfile(vars(args)["output-base"]+".fastq"):
-        print("File "+vars(args)["output-base"]+".fastq "+
-            "exits, so I'm quitting before you ask me to do "+
-            "something you'll regret.")
-        exit(1)
-    if os.path.isfile(vars(args)["output-base"]+"_report.csv"):
-        print("File "+vars(args)["output-base"]+".fastq "+
-            "exits, so I'm quitting before you ask me to do "+
-            "something you'll regret.")
-        exit(1)
-
-    #####
-    # Multi proc
-    #####
+#### Running the actual functions using multiprocessing
 
     manager  = multiprocessing.Manager()
     input_line_queue = multiprocessing.Queue()
