@@ -116,8 +116,7 @@ def reader(
                     # and how verbose to be
                     operations_array, filters,
                     output_seq_spec, output_id_spec,
-                    if_write_report, verbosity
-                    )
+                    if_write_report, verbosity)
 
             # This is a per-record test
             if passed:
@@ -152,7 +151,7 @@ def reader(
 def chop(
     record, operations_array, filters,
     output_seq_spec, output_id_spec,
-    if_write_report = False, verbosity=0
+    if_write_report, verbosity
     ):
 
     # Making the input record from the raw strings
@@ -265,6 +264,8 @@ def chop(
                     re.sub("\"","\\\"",re.sub(",","\,",
                         json.dumps(scores_holder)))+"\""
                 ))
+        else:
+            return((False,input_record,""))
         # If this json dump is empty, it might be because it didn't
         # ever match the first operation, so then just died without
         # building that object
@@ -376,23 +377,33 @@ if __name__ == '__main__':
     parser.add_argument("--operation","-o",action="append",
         help="The pattern to match and extract. This has a "+
             "specific and sort of complicated syntax. Refer to "+
-            "the documentation via the README.md file."+
+            "the documentation via the README.md file, or to "+
+            "the original regex module documentation. "+
             "They are chained in the order you specify.")
 
     # Filter specification
     parser.add_argument("--filter","-f",action="append",
         help="A filter for eliminating reads that don't pass some "+
             "alignment based cutoff. This is specified per "+
-            "operation, so remember the name from above. Syntax: ''")
+            "operation, so remember the name from above. "+
+            "Every sequence has a _start, _end, and _length "+
+            "calculated. You're welcome."
+            )
 
     # Output stream
     parser.add_argument("--output-id",
-        help="format for the output file id, per read that passes "+
-            "filter",
+        help="Format for the output file id, per read that passes "+
+            "filter. This is supposed to be a string, so you can "+
+            "access .id or .seq properties of the sequences. You "+
+            "probably want to include `input.id` in there.",
         default="input.id")
     parser.add_argument("--output-seq",
-        help="format for the output file seq, per read that "+
-            "passes filter",
+        help="Format for the output file seq, per read that "+
+            "passes filter. This is a Biopython SeqRecord, so "+
+            "you need to just specify the names of the caputure "+
+            "groups. You can't access .id or _length properties or "+
+            "the like. This is not for that, put it in the "+
+            "output-id.",
         default="input")
 
     # Output files
@@ -427,14 +438,19 @@ if __name__ == '__main__':
             (name, instruction) = each.split(":")
             # similarly use the ` > ` to specify the flow of input to
             # the regex
-            (input_string, regex_string) = instruction.strip().split(" > ")
+            (input_string, regex_string) = re.split("\s>\s",
+                instruction.strip())
             # append that to the operations array
-            operations_array.append( [name, input_string, regex_string] )
+            operations_array.append( [name, 
+                    input_string.strip(), regex_string.strip()] 
+                )
     except:
         # Failure likely from lack of operations to do
-        print("\n"+"Wait a second, there's no operations to be done! "+
-            "What am I doing here? What is my purpose? "+
-            "As they said in Darkstar: 'Let there be light.' "+
+        print("\n"+"Wait a second, I don't understand the "+
+            "operations to be done! Are there any? "+
+            "Maybe there's small part I'm choking on? "+
+            "Maybe try adding steps in one at a time in "+
+            "interactive context with --limit set. "+
             "Exiting...")
         exit(1)
 
