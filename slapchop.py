@@ -245,10 +245,17 @@ if __name__ == '__main__':
 
     # Resources details
     parser.add_argument("--processes",default=1)
-    parser.add_argument("--bite-size",
-        help="The size of bites to chomp off of the input file for multi-process",
-        default=1000)
-    parser.add_argument("--limit",default=None)
+    parser.add_argument("--bite-size",default=1000,
+        help="The size of bites to chomp off of the input file for "+
+            "multi-process, also the max size of the disk write "+
+            "caching."
+        )
+    parser.add_argument("--limit",default=None,
+        help="The limit of reads to process, useful for just "+
+            "proofing that your operations are actually working, "+
+            "and for collecting stats in the report for setting "+
+            "filters."
+        )
 
     # verbosity
     parser.add_argument("-v","--verbose",action="count",default=0)
