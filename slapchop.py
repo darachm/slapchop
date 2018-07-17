@@ -438,18 +438,34 @@ if __name__ == '__main__':
     operations_array = []
 
     try:
+
         for each in args.operation:
+
             # Split on the colon to specify the name on the left of it
             (name, instruction) = each.split(":")
+
+            if instruction.find("<spacer>"):
+                print("Hey, you can't name a capture group "+
+                    "'spacer', I'm using that!")
+                exit(1)
+
+            if instruction.find("<input>"):
+                print("Hey, you can't name a capture group "+
+                    "'input', I'm using that!")
+                exit(1)
+
             # similarly use the ` > ` to specify the flow of input to
             # the regex
             (input_string, regex_string) = re.split("\s>\s",
                 instruction.strip())
+
             # append that to the operations array
             operations_array.append( [name, 
                     input_string.strip(), regex_string.strip()] 
                 )
+
     except:
+
         # Failure likely from lack of operations to do
         print("\n"+"Wait a second, I don't understand the "+
             "operations to be done! Are there any? "+
