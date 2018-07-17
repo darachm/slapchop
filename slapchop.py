@@ -131,14 +131,14 @@ def reader(
             with open(pass_fastq,"a") as f:
                 for i in pass_records:
                     print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                            i.letter_annotations['phred_quality']+"\n",
+                            i.letter_annotations['phred_quality'],
                         file=f)
 
         with fail_lock:
             with open(fail_fastq,"a") as f:
                 for i in fail_records:
                     print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                            i.letter_annotations['phred_quality']+"\n",
+                            i.letter_annotations['phred_quality'],
                         file=f)
 
         with report_lock:

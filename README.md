@@ -29,7 +29,7 @@ For a verbose example of a debugging run:
         --filter "sample_length == 5 and rest_start >= 16" \
         --verbose --verbose --verbose
 
-This one:
+That invocation:
 
     - Takes records from the `input.fastq`
     - Starts three processes that each take bites of 10 records
@@ -49,7 +49,24 @@ This one:
         for debugging purposes.
 
 Then if we like our thresholds we'd re-run, and drop the `--limit`
-and `--write-report` flags.
+and `--write-report` flags. This will turn records like this:
+
+    @NB501157:100:H5J5LBGX2:1:11101:10000:6068 1:N:0:
+    CTACTGTCCACGAGGTCTCTGCAGATAATACACTGTCACCCGTACGCTGCAGGTCGACCGTAGGAGGGAGATGTG
+    +
+    AAAAAEEEE/AEE<EEEEEEEEAEEAEEAEEEEE/EEE/EEEEEEEEE/EEEEEEEEEEEEE/EEEEEEEEEEEE
+
+into records like this:
+
+    @NB501157:100:H5J5LBGX2:1:11101:10000:6068_umi=CTGAGA_sample=CTACT
+    GCAGATAATACACTGTCACC
+    +
+    EEAEEAEEAEEEEE/EEE/E
+
+The sample barcode is the first five, and the UMI is interspersed 
+downstream. 
+
+---
 
 This script leans strongly on the work of:
 
