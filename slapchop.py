@@ -469,6 +469,7 @@ if __name__ == '__main__':
                 print("  "+i)
         except:
             print("  ( no filters defined )")
+            args.filter = ["True == True"]
 
     if args.verbose > 0:
         print("\n"+"Then, I'm going to write out a FASTQ file to '"+
