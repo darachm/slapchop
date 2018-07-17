@@ -5,13 +5,13 @@
 #
 
 import re
-import multiprocessing 
-import itertools
-import argparse
-import os.path
-from Bio import Seq, SeqRecord, SeqIO
-import regex
 import json
+import regex
+import os.path
+import argparse
+import itertools
+import multiprocessing 
+from Bio import Seq, SeqRecord
 
 #### The reader function, the thing paralleled
     # It takes a bunch of arguments
@@ -338,11 +338,6 @@ def evaluate_filters(filters,scores_holder):
     return(return_object)
 
 
-
-#####
-# Main script
-#####
-
 if __name__ == '__main__':
 
 #### defining arguments with argparse module
@@ -546,3 +541,4 @@ if __name__ == '__main__':
 
     print("\n"+
         "All worked 'till the work is done --- or some fatal error.")
+    exit(0)
