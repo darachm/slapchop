@@ -141,10 +141,11 @@ def reader(
                             i.letter_annotations['phred_quality'],
                         file=f)
 
-        with report_lock:
-            with open(report_csv,"a") as f:
-                for i in report_records:
-                    print(i,file=f)
+        if if_write_report:
+            with report_lock:
+                with open(report_csv,"a") as f:
+                    for i in report_records:
+                        print(i,file=f)
 
 
 
@@ -162,12 +163,11 @@ def chop(
 
     # Making a spacer thing
     spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
-    spacer.letter_annotations['phred_quality'] = ["I"]
+    spacer.letter_annotations['phred_quality'] = "I"
 
     # We make some holders for these operations
     scores_holder = dict()
-    seq_holder = {'spacer': spacer}
-    seq_holder['input'] = input_record 
+    seq_holder = {'spacer': spacer, 'input': input_record}
 
 #rewrite as a class ????
 
@@ -323,8 +323,8 @@ def chop(
 def evaluate_output_directives(output_seq, output_id, seq_holder):
     # Here we evaluate them but using that dictionary as the global
     # dictionary, because done is better than dogma.
-    return_record = eval(output_seq,{},seq_holder)
-    return_record.id = eval(output_id,{},seq_holder)
+    return_record    = eval(output_seq,{},seq_holder)
+    return_record.id = eval(output_id, {},seq_holder)
     return(return_record)
 
 
@@ -444,12 +444,12 @@ if __name__ == '__main__':
             # Split on the colon to specify the name on the left of it
             (name, instruction) = each.split(":")
 
-            if instruction.find("<spacer>"):
+            if instruction.find("<spacer>") > 0:
                 print("Hey, you can't name a capture group "+
                     "'spacer', I'm using that!")
                 exit(1)
 
-            if instruction.find("<input>"):
+            if instruction.find("<input>") > 0:
                 print("Hey, you can't name a capture group "+
                     "'input', I'm using that!")
                 exit(1)
