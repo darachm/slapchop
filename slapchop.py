@@ -84,7 +84,6 @@ def reader(
                     " found the end and is done"
                     )
             input_line_queue.put("exitpill")
-            return(0)
         # Otherwise, then just put the current position back in the
         # queue
         else:
