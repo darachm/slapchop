@@ -33,7 +33,15 @@ tmp/barseq_longrun_pass.fastq: example-data/barseq.fastq
 
 clean:
 	rm -r tmp || echo ""
-	rm -r .nextflow || echo ""
+	rm -r .nextflow* || echo ""
+	rm -r nextflow* || echo ""
 	rm -r work || echo ""
 	
+slapchop.singularity: Singularity
+	sudo rm -r $@ || echo "already gone"
+	sudo singularity build $@ $<
+
+/tmp/slapchop-test-simg: Singularity
+	sudo rm -r $@ || echo "already gone"
+	sudo singularity build --sandbox $@ $<
 
