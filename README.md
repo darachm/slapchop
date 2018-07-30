@@ -8,6 +8,12 @@ It then repeats this for as many actions
 as you specify, and then writes a new FASTQ file as specified from
 the regex capture groups. 
 
+Also available as [a singularity containter](https://www.singularity-hub.org/collections/1361)!
+So you if you have Singularity installed you can just use it 
+(without worrying about dependencies) with: 
+`singularity run shub://darachm/slapchop -h` (to show the argument
+help message for example).
+
 This is designed as a tool to parse amplicon sequencing data using
 more than just fixed positional anchors. By using regular expressions
 we can chop barcodes from indeterminate positions, reassemble a 
