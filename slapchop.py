@@ -206,7 +206,7 @@ def chop(
             # We use this regex
             operation[1], 
             # to search on this sequence
-            str(seq_holder[operation[0]].seq),
+            str(seq_holder[operation[0]].seq).upper(),
             # And we use the BESTMATCH strategy, I think
             regex.BESTMATCH )
 
