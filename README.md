@@ -1,4 +1,3 @@
-
 # SLAPCHOP
 
 This is a script that takes each read from a big fastq file, and
@@ -54,6 +53,11 @@ That invocation:
     - We've got three levels of verbosity, so a per-record verbosity
         for debugging purposes.
 
+Note that the output formatting is a bit funny. This is directly evaluated
+(because security is what?) on BioPython SequenceRecords, so you need to specify
+just the name of the capture group(s) for the outputs so it can access the
+`.seq` and qualities. For the ID, etc, you can access `.seq` or `.id`.
+
 Then if we like our thresholds we'd re-run, and drop the `--limit`
 and `--write-report` flags. This will turn records like this:
 
@@ -71,21 +75,19 @@ into records like this:
 
 The sample barcode is the first five, the strain barcode starts after
 the `TCT`, and the UMI is interspersed downstream. This is modified
-yeast BarSeq.
+yeast BarSeq, btw.
 
 ---
 
-This script leans strongly on the work of 
+This script depends strongly upon (uses) the work of 
 [regex](https://pypi.org/project/regex/)
 and
 [Biopython](https://pypi.org/project/biopython/).
 
 ---
 
-Todo:
+Todo.......
 
-- Need to implement benchmarking to understand where it's slow
-- Figure out how to speed up, with refactoring and cython maybe
 - Needs more tutorial/examples/documentation
 - Report generation R scripts, so making summary plots from these 
     report.csv's
@@ -93,4 +95,3 @@ Todo:
     examples above. Might be hard with the stochasticity of
     parallelism.
 
-(wanna help?)
