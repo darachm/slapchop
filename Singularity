@@ -38,9 +38,10 @@ MAINTAINER darachm
 %post
 
     apt-get -y update
+    apt-get -y install apt-utils
     apt-get -y install python3 python3-biopython python3-pip
 
-    pip3 install regex
+    pip3 install regex==2019.02.18
 
 %test
 
