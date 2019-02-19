@@ -246,7 +246,7 @@ def chop(
 
     # All these values allow use to apply filters, using this
     # function
-    evaluated_filters = evaluate_filters(filters, scores_holder, seq_holder)
+    evaluated_filters = evaluate_filters(filters, {**scores_holder, **seq_holder} )
 
     # This evaluated_filters should be logical list
     if not all(evaluated_filters):
@@ -327,15 +327,13 @@ def evaluate_output_directives(output_seq, output_id, seq_holder):
     return(return_record)
 
 
-def evaluate_filters(filters,scores_holder,seq_holder):
+def evaluate_filters(filters,holder):
     return_object = []
     try:
         for each_filter in filters:
             # Here we evaluate them but using that dictionary as the
             # global dictionary, because done is better than dogma.
-            if eval(each_filter,{},scores_holder):
-                return_object.append(True)
-            elif eval(each_filter,{},seq_holder):
+            if eval(each_filter,{},holder):
                 return_object.append(True)
             else:
                 return([False])
