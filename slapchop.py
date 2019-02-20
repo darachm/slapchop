@@ -130,14 +130,14 @@ def reader(
             with open(pass_fastq,"a") as f:
                 for i in pass_records:
                     print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                            i.letter_annotations['phred_quality'],
+                            i.letter_annotations['phred_letters'],
                         file=f)
 
         with fail_lock:
             with open(fail_fastq,"a") as f:
                 for i in fail_records:
                     print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                            i.letter_annotations['phred_quality'],
+                            i.letter_annotations['phred_letters'],
                         file=f)
 
         if if_write_report:
@@ -157,12 +157,15 @@ def chop(
     # Making the input record from the raw strings
     input_record = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
         id = record[0].rstrip().split(" ")[0])
-    input_record.letter_annotations['phred_quality'] = \
+    input_record.letter_annotations['phred_letters'] = \
         record[3][0:len(record[1].rstrip())]
 
     # Making a spacer thing
     spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
-    spacer.letter_annotations['phred_quality'] = "I"
+    spacer.letter_annotations['phred_letters'] = "I"
+
+    # Make the right quality scores
+    input_record.letter_annotations['phred_quality'] = [ ord(i)-33 for i in input_record.letter_annotations['phred_letters'] ]
 
     # We make some holders for these operations
     scores_holder = dict()
@@ -176,7 +179,7 @@ def chop(
             " starting to process :\n  "+
             input_record.id+"\n  "+
             input_record.seq+"\n  "+
-            input_record.letter_annotations['phred_quality']
+            input_record.letter_annotations['phred_letters']
             )
 
     for each_operation in operations_array:
