@@ -31,7 +31,7 @@ For a verbose example of a debugging run:
         --output-seq "strain" \
         --output-id "input.id+'_umi='+umi1.seq+umi2.seq+umi3.seq+ \
             umi4.seq+umi5.seq+umi6.seq+'_sample='+sample.seq" \
-        --filter "sample_length == 5 and rest_start >= 16" \
+        --filter "sample_length == 5 and rest_start >= 16 and ( min(strain.letter_annotations['phred_quality']) >= 30 )"\
         --verbose --verbose --verbose
 
 That invocation:
