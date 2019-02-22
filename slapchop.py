@@ -37,7 +37,7 @@ def reader(
         # actual people to suicide.
         if current_pos == "exitpill":
             if verbosity > 1:
-                print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                     " with pid "+
                     str(multiprocessing.current_process().pid)+
                     " found a exit pill and is exiting"
@@ -49,7 +49,7 @@ def reader(
         if limit_size is not None:
             if current_pos > limit_size:
                 if verbosity > 1:
-                    print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+                    print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                         " with pid "+
                         str(multiprocessing.current_process().pid)+
                         " exceeded the limit and is exiting"
@@ -59,7 +59,7 @@ def reader(
 
         # Tell us what you're doing?
         if verbosity > 1:
-            print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " trying to read a chunk of size "+
                 str(bite_size)+" fastq records."
                 )
@@ -79,7 +79,7 @@ def reader(
         # And detect if we're at the end of the file, if so, exitpill
         if ifqp.readline() == "":
             if verbosity > 1:
-                print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                     " with pid "+
                     str(multiprocessing.current_process().pid)+
                     " found the end and is done"
@@ -176,7 +176,7 @@ def chop(
 
     # Chop grained verbosity
     if verbosity > 2:
-        print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+        print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
             " starting to process :\n  "+
             input_record.id+"\n  "+
             input_record.seq+"\n  "+
@@ -193,14 +193,14 @@ def chop(
         # from input stream!
         if operation[0] not in seq_holder.keys():
             if verbosity > 3:
-                print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " can't find the sequence named `"+
                 operation[0]+"` in the holder, so continuing."
                 )
             continue
 
         if verbosity > 3:
-            print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " attempting to match : "+operation[1]+
                 " against "+seq_holder[operation[0]].seq
                 )
@@ -215,7 +215,7 @@ def chop(
             regex.BESTMATCH )
 
         if verbosity > 3:
-            print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " match is : "+
                 str(fuzzy_match)
                 )
@@ -256,7 +256,7 @@ def chop(
     if not all(evaluated_filters):
 
         if verbosity > 2:
-            print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " evaluated the filters as : "+
                 str(evaluated_filters)+
                 " and so failed."
@@ -286,7 +286,7 @@ def chop(
                 output_seq_spec,output_id_spec,seq_holder) 
 
             if verbosity > 2:
-                print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                     " evaluated the filters as : "+
                     str(evaluated_filters)+
                     " and so passed!"
@@ -308,7 +308,7 @@ def chop(
         except:
 
             if verbosity > 2:
-                print("\n"+"["+str(time.mktime())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                     " failed upon forming the output."
                     )
 
@@ -470,7 +470,7 @@ if __name__ == '__main__':
     except:
 
         # Failure likely from lack of operations to do
-        print("\n"+"["+str(time.mktime())+"]"+" : "+"Wait a second, I don't understand the "+
+        print("\n"+"["+str(time.time())+"]"+" : "+"Wait a second, I don't understand the "+
             "operations to be done! Are there any? "+
             "Maybe there's small part I'm choking on? "+
             "Maybe try adding steps in one at a time in "+
@@ -479,7 +479,7 @@ if __name__ == '__main__':
         exit(1)
 
     if args.verbose > 0:
-        print("\n"+"["+str(time.mktime())+"]"+" : "+"I'm reading in '"+vars(args)["input-fastq"]+"', "+
+        print("\n"+"["+str(time.time())+"]"+" : "+"I'm reading in '"+vars(args)["input-fastq"]+"', "+
             "applying these operations of alignment :\n")
         for each in operations_array:
             print("- "+each[0]+" :\n"+
@@ -487,7 +487,7 @@ if __name__ == '__main__':
                 "  extract groups with regex : '"+each[2])
 
     if args.verbose > 0:
-        print("\n"+"["+str(time.mktime())+"]"+" : "+"...and with these filters:")
+        print("\n"+"["+str(time.time())+"]"+" : "+"...and with these filters:")
         try:
             for i in args.filter:
                 print("  "+i)
@@ -496,7 +496,7 @@ if __name__ == '__main__':
             args.filter = ["True == True"]
 
     if args.verbose > 0:
-        print("\n"+"["+str(time.mktime())+"]"+" : "+"Then, I'm going to write out a FASTQ file to '"+
+        print("\n"+"["+str(time.time())+"]"+" : "+"Then, I'm going to write out a FASTQ file to '"+
             vars(args)["output-base"]+".fastq'",end="")
         if args.write_report:
             print(" and a report to '"+
@@ -504,7 +504,7 @@ if __name__ == '__main__':
         print(".")
 
     if args.verbose > 0:
-        print("\n"+"["+str(time.mktime())+"]"+" : "+"I will proceed to process the file with "+
+        print("\n"+"["+str(time.time())+"]"+" : "+"I will proceed to process the file with "+
             str(args.processes)+" processes operating in chunks of "+
             str(args.bite_size)+" records.")
 
@@ -525,7 +525,7 @@ if __name__ == '__main__':
         if os.path.isfile(this_path) and              \
                 not( not(args.write_report) and       \
                     (this_path.find("_report")>=0) ):
-            print("\n"+"["+str(time.mktime())+"]"+" : "+"File "+this_path+
+            print("\n"+"["+str(time.time())+"]"+" : "+"File "+this_path+
                 " exits, so I'm quitting before you ask me to do "+
                 "something you might regret.")
             exit_flag = 1
@@ -534,7 +534,7 @@ if __name__ == '__main__':
 
     # We begin
     if args.verbose > 0:
-        print("\n"+"["+str(time.mktime())+"]"+" : BEGIN\n")
+        print("\n"+"["+str(time.time())+"]"+" : BEGIN\n")
     
 #### Running the actual functions using multiprocessing
 
@@ -571,7 +571,7 @@ if __name__ == '__main__':
                 )
             )
         if args.verbose > 0:
-            print("\n"+"["+str(time.mktime())+"]"+" : "+"Comrade"+str(i)+" starting up...")
+            print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
 
     for i in jobs:
         i.start()
@@ -580,6 +580,6 @@ if __name__ == '__main__':
         if i.is_alive():
             i.join()
 
-    print("\n"+"["+str(time.mktime())+"]"+" : "+
+    print("\n"+"["+str(time.time())+"]"+" : "+
         "All worked 'till the work is done --- or some fatal error.")
     exit(0)
