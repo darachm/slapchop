@@ -9,6 +9,7 @@ import json
 import regex
 import os.path
 import time
+import statistics
 import argparse
 import itertools
 import multiprocessing 
