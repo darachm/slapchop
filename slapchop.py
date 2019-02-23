@@ -157,10 +157,12 @@ def chop(
     ):
 
     # Making the input record from the raw strings
+    r0split = record[0].rstrip().split(" ",maxsplit=1)
     input_record = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
-        id = record[0].rstrip().split(" ")[0])
-    input_record.letter_annotations['phred_letters'] = \
-        record[3][0:len(record[1].rstrip())]
+        id = r0split[0], 
+        description = r0split[1] if len(r0split) == 2 else ""
+        )
+    input_record.letter_annotations['phred_letters'] =  record[3][0:len(record[1].rstrip())]
 
     # Making a spacer thing
     spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
