@@ -340,7 +340,7 @@ def evaluate_filters(filters,holder):
         for each_filter in filters:
             # Here we evaluate them but using that dictionary as the
             # global dictionary, because done is better than dogma.
-            if eval(each_filter,{},holder):
+            if eval(each_filter,globals(),holder):
                 return_object.append(True)
             else:
                 return([False])
