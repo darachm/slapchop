@@ -15,6 +15,18 @@ import itertools
 import multiprocessing 
 from Bio import Seq, SeqRecord
 
+# `muppy` is for memory profiling
+from pympler import tracker
+from pympler import muppy
+from pympler import summary
+
+def print_muppy(threshold,message,muppy_level):
+    if muppy_level > threshold:
+        print(message)
+#        tracker.SummaryTracker().print_diff()
+        summary.print_(summary.summarize(muppy.get_objects(include_frames=True)))
+    return 0
+
 #### The reader function, the thing paralleled
     # It takes a bunch of arguments
 def reader(
@@ -22,13 +34,17 @@ def reader(
     pass_lock,   pass_fastq,
     fail_lock,   fail_fastq,
     report_lock, report_csv,
-    bite_size,   limit_size, if_write_report, verbosity,
+    bite_size,   limit_size, if_write_report, verbosity, 
+    muppy_level,
     operations_array, filters ,
     output_seq_spec, output_id_spec
     ):
 
     # Always looping
     while True:
+
+        # `muppy` memory profiler
+        print_muppy(0,"At begin of bite",muppy_level)
 
         # Waits for the input line marker from the queue
         current_pos = input_line_queue.get()
@@ -117,7 +133,7 @@ def reader(
                     # and how verbose to be
                     operations_array, filters,
                     output_seq_spec, output_id_spec,
-                    if_write_report, verbosity)
+                    if_write_report, verbosity, muppy_level)
 
             # This is a per-record test
             if passed:
@@ -148,13 +164,18 @@ def reader(
                     for i in report_records:
                         print(i,file=f)
 
+        # `muppy` memory profiler
+        print_muppy(1,"At end of bite",muppy_level)
 
 
 def chop(
     record, operations_array, filters,
     output_seq_spec, output_id_spec,
-    if_write_report, verbosity
+    if_write_report, verbosity, muppy_level
     ):
+
+    # `muppy` memory profiler
+    print_muppy(2,"At begin of chop()",muppy_level)
 
     # Making the input record from the raw strings
     r0split = record[0].rstrip().split(" ",maxsplit=1)
@@ -326,6 +347,10 @@ def chop(
             else:
                 return((False,input_record,""))
 
+    # `muppy` memory profiler
+    print_muppy(4,"At end of chop()",muppy_level)
+
+
 def evaluate_output_directives(output_seq, output_id, seq_holder):
     # Here we evaluate them but using that dictionary as the global
     # dictionary, because done is better than dogma.
@@ -382,6 +407,15 @@ if __name__ == '__main__':
             "4 is each operation level details."+
             "All to standard out, so be ready for it."
             )
+
+    # memory tracker
+    parser.add_argument("-m","--muppy",action="count",default=0,
+        help="This denotes the verbosity of the `muppy` memory tracker."+
+            "0 is nothing"+
+            "1 is every worker bite"+
+            "2 is every read"+
+            "3 is every ?"
+        )
 
     # Operations
     parser.add_argument("--operation","-o",action="append",
@@ -567,6 +601,7 @@ if __name__ == '__main__':
                     report_lock, vars(args)["output-base"]+"_report.csv",
                     args.bite_size, args.limit, 
                     args.write_report, args.verbose,
+                    args.muppy,
                     operations_array, args.filter ,
                     args.output_seq, args.output_id
                     ),
