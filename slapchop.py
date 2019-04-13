@@ -24,7 +24,8 @@ def print_muppy(threshold,message,muppy_level):
     if muppy_level > threshold:
         print(message)
 #        tracker.SummaryTracker().print_diff()
-        summary.print_(summary.summarize(muppy.get_objects(include_frames=True)))
+#        summary.print_(summary.summarize(muppy.get_objects()))
+        print(muppy.get_size(muppy.get_objects()))
     return 0
 
 #### The reader function, the thing paralleled
@@ -276,6 +277,9 @@ def chop(
     # function
     evaluated_filters = evaluate_filters(filters, {**scores_holder, **seq_holder} )
 
+    # `muppy` memory profiler
+    print_muppy(3,"At end of chop()",muppy_level)
+
     # This evaluated_filters should be logical list
     if not all(evaluated_filters):
 
@@ -346,9 +350,6 @@ def chop(
                     ))
             else:
                 return((False,input_record,""))
-
-    # `muppy` memory profiler
-    print_muppy(4,"At end of chop()",muppy_level)
 
 
 def evaluate_output_directives(output_seq, output_id, seq_holder):
