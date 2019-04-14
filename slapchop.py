@@ -20,12 +20,27 @@ from pympler import tracker
 from pympler import muppy
 from pympler import summary
 
+#from memory_profiler import profile
+
+#def output_function(o):
+#    return str(type(o))
+
 def print_muppy(threshold,message,muppy_level):
     if muppy_level > threshold:
         print(message)
 #        tracker.SummaryTracker().print_diff()
 #        summary.print_(summary.summarize(muppy.get_objects()))
-        print(muppy.get_size(muppy.get_objects()))
+#        print(muppy.get_objects())
+        my_types = muppy.filter(muppy.get_objects(), Type=list)
+        print( len(my_types))
+#        if len(my_types) > 3000:
+#            print("ZERP")
+#            sorted_mytypes = sorted(my_types,key=len)
+#            ([ print(i[0:5][0]) or print(i[0:5][1][0:5]) for i in zip([len(x) for x in sorted_mytypes],sorted_mytypes)])
+#            zerp
+#        refbrowser.ConsoleBrowser(root, maxdepth=2, str_func=output_function).print_tree()
+#        print(muppy.get_size(muppy.get_objects()))
+#        print(hpy.heap())
     return 0
 
 #### The reader function, the thing paralleled
@@ -44,130 +59,161 @@ def reader(
     # Always looping
     while True:
 
-        # `muppy` memory profiler
-        print_muppy(0,"At begin of bite",muppy_level)
+        if read_bite(
+                input_line_queue, input_fastq,
+                pass_lock,   pass_fastq,
+                fail_lock,   fail_fastq,
+                report_lock, report_csv,
+                bite_size,   limit_size, if_write_report, verbosity, 
+                muppy_level,
+                operations_array, filters ,
+                output_seq_spec, output_id_spec
+                ) is 1:
+            break
 
-        # Waits for the input line marker from the queue
-        current_pos = input_line_queue.get()
+    return(0)
 
-        # If it's a exitpill, declare the end and return.
-        # It's not a poisonpill, because some people have lost
-        # actual people to suicide.
-        if current_pos == "exitpill":
-            if verbosity > 1:
-                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
-                    " with pid "+
-                    str(multiprocessing.current_process().pid)+
-                    " found a exit pill and is exiting"
-                    )
-            input_line_queue.put("exitpill")
-            return(0)
+def read_bite(
+    input_line_queue, input_fastq,
+    pass_lock,   pass_fastq,
+    fail_lock,   fail_fastq,
+    report_lock, report_csv,
+    bite_size,   limit_size, if_write_report, verbosity, 
+    muppy_level,
+    operations_array, filters ,
+    output_seq_spec, output_id_spec
+    ):
 
-        # Next we try to use the limit_size to see if we should stop
-        if limit_size is not None:
-            if current_pos > limit_size:
-                if verbosity > 1:
-                    print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
-                        " with pid "+
-                        str(multiprocessing.current_process().pid)+
-                        " exceeded the limit and is exiting"
-                        )
-                input_line_queue.put("exitpill")
-                return(0)
+    # `muppy` memory profiler
+    print_muppy(0,"At begin of bite",muppy_level)
 
-        # Tell us what you're doing?
+    # Waits for the input line marker from the queue
+    current_pos = input_line_queue.get()
+
+    # If it's a exitpill, declare the end and return.
+    # It's not a poisonpill, because some people have lost
+    # actual people to suicide.
+    if current_pos == "exitpill":
         if verbosity > 1:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
-                " trying to read a chunk of size "+
-                str(bite_size)+" fastq records."
+                " with pid "+
+                str(multiprocessing.current_process().pid)+
+                " found a exit pill and is exiting"
                 )
+        input_line_queue.put("exitpill")
+        return(1)
 
-        # If we have the current_pos from above, then no-one else
-        # is reading the file, so let's open it
-        ifqp = open(input_fastq,"r")
-        # Go to that position
-        ifqp.seek(current_pos)
-        # And read a chunk. We use an iterator because we have to be
-        # line-oriented but the position marker is byte-oriented.
-        chunk = []
-        for i in range(bite_size*4):
-            chunk.append(ifqp.readline())
-        # We read back the current position in bytes
-        current_pos = ifqp.tell()
-        # And detect if we're at the end of the file, if so, exitpill
-        if ifqp.readline() == "":
+    # Next we try to use the limit_size to see if we should stop
+    if limit_size is not None:
+        if current_pos > limit_size:
             if verbosity > 1:
                 print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                     " with pid "+
                     str(multiprocessing.current_process().pid)+
-                    " found the end and is done"
+                    " exceeded the limit and is exiting"
                     )
             input_line_queue.put("exitpill")
-        # Otherwise, then just put the current position back in the
-        # queue
+            return(1)
+
+    # Tell us what you're doing?
+    if verbosity > 1:
+        print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+            " trying to read a chunk of size "+
+            str(bite_size)+" fastq records."
+            )
+
+    # If we have the current_pos from above, then no-one else
+    # is reading the file, so let's open it
+    ifqp = open(input_fastq,"r")
+    # Go to that position
+    ifqp.seek(current_pos)
+    # And read a chunk. We use an iterator because we have to be
+    # line-oriented but the position marker is byte-oriented.
+    chunk = []
+    for i in range(bite_size*4):
+        chunk.append(ifqp.readline())
+    # We read back the current position in bytes
+    current_pos = ifqp.tell()
+    # And detect if we're at the end of the file, if so, exitpill
+    if ifqp.readline() == "":
+        if verbosity > 1:
+            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+                " with pid "+
+                str(multiprocessing.current_process().pid)+
+                " found the end and is done"
+                )
+        input_line_queue.put("exitpill")
+    # Otherwise, then just put the current position back in the
+    # queue
+    else:
+        input_line_queue.put(current_pos)
+    ifqp.close()
+
+    # Let's make some arrays to hold three kinds of records.
+    # First is those that pass filters, then those that fail.
+    # The last is the report if you've made that option
+    pass_records = []
+    fail_records = []
+    # We make report_records empty even if not using it
+    report_records = []
+
+    # We use itertools to slice 4 line chunks (this is fastq)
+    for slice_base in itertools.islice(range(len(chunk)),0,None,4):
+
+        # if it's empty, we must have butted against the end
+        # of the file, but we already inserted the exitpill
+        if chunk[slice_base] == "":
+            break
+
+        # Otherwise, call chop and save the returns 
+        (passed, output_record, report_object) = \
+            chop(
+                # This is the actual fastq record
+                chunk[slice(slice_base,(slice_base+4))],
+                # This is the operations to do, filters, 
+                # then if to save report records,
+                # and how verbose to be
+                operations_array, filters,
+                output_seq_spec, output_id_spec,
+                if_write_report, verbosity, muppy_level)
+
+        # This is a per-record test
+        if passed:
+            pass_records.append(output_record)
         else:
-            input_line_queue.put(current_pos)
-
-        # Let's make some arrays to hold three kinds of records.
-        # First is those that pass filters, then those that fail.
-        # The last is the report if you've made that option
-        pass_records = []
-        fail_records = []
-        # We make report_records empty even if not using it
-        report_records = []
-
-        # We use itertools to slice 4 line chunks (this is fastq)
-        for slice_base in itertools.islice(range(len(chunk)),0,None,4):
-
-            # if it's empty, we must have butted against the end
-            # of the file, but we already inserted the exitpill
-            if chunk[slice_base] == "":
-                break
-    
-            # Otherwise, call chop and save the returns 
-            (passed, output_record, report_object) = \
-                chop(
-                    # This is the actual fastq record
-                    chunk[slice(slice_base,(slice_base+4))],
-                    # This is the operations to do, filters, 
-                    # then if to save report records,
-                    # and how verbose to be
-                    operations_array, filters,
-                    output_seq_spec, output_id_spec,
-                    if_write_report, verbosity, muppy_level)
-
-            # This is a per-record test
-            if passed:
-                pass_records.append(output_record)
-            else:
-                fail_records.append(output_record)
-            if if_write_report:
-                report_records.append(report_object)
-        
-        # Then we write out the records with the appropriate locks
-        with pass_lock:
-            with open(pass_fastq,"a") as f:
-                for i in pass_records:
-                    print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                            i.letter_annotations['phred_letters'],
-                        file=f)
-
-        with fail_lock:
-            with open(fail_fastq,"a") as f:
-                for i in fail_records:
-                    print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                            i.letter_annotations['phred_letters'],
-                        file=f)
-
+            fail_records.append(output_record)
         if if_write_report:
-            with report_lock:
-                with open(report_csv,"a") as f:
-                    for i in report_records:
-                        print(i,file=f)
+            report_records.append(report_object)
 
-        # `muppy` memory profiler
-        print_muppy(1,"At end of bite",muppy_level)
+        del passed
+        del output_record
+        del report_object
+    
+    # Then we write out the records with the appropriate locks
+    with pass_lock:
+        with open(pass_fastq,"a") as f:
+            for i in pass_records:
+                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
+                        i.letter_annotations['phred_letters'],
+                    file=f)
 
+    with fail_lock:
+        with open(fail_fastq,"a") as f:
+            for i in fail_records:
+                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
+                        i.letter_annotations['phred_letters'],
+                    file=f)
+
+    if if_write_report:
+        with report_lock:
+            with open(report_csv,"a") as f:
+                for i in report_records:
+                    print(i,file=f)
+
+    # `muppy` memory profiler
+    print_muppy(1,"At end of bite",muppy_level)
+
+    return(0)
 
 def chop(
     record, operations_array, filters,
@@ -277,9 +323,6 @@ def chop(
     # function
     evaluated_filters = evaluate_filters(filters, {**scores_holder, **seq_holder} )
 
-    # `muppy` memory profiler
-    print_muppy(3,"At end of chop()",muppy_level)
-
     # This evaluated_filters should be logical list
     if not all(evaluated_filters):
 
@@ -322,6 +365,10 @@ def chop(
 
             # If we want to write the report, we make it
             if if_write_report:
+
+                # `muppy` memory profiler
+                print_muppy(3,"At end of chop(), while writing",muppy_level)
+
                 return((True,output_record,
                     "\"Passed\","+
                     "\""+output_record.id+"\",\""+
