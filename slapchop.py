@@ -15,8 +15,7 @@ import itertools
 import multiprocessing 
 from Bio import Seq, SeqRecord
 import tracemalloc
-import copy
-import gc
+import time
 
 def print_memory_tracking(threshold,message,current_level):
     if current_level > threshold:
@@ -27,34 +26,7 @@ def print_memory_tracking(threshold,message,current_level):
             print(stat)
     return 0
 
-#### The reader function, the thing paralleled
-    # It takes a bunch of arguments
 def reader(
-    input_line_queue, input_fastq,
-    pass_lock,   pass_fastq,
-    fail_lock,   fail_fastq,
-    report_lock, report_csv,
-    bite_size,   limit_size, if_write_report, verbosity, 
-    memory_tracking_level,
-    operations_array, filters ,
-    output_seq_spec, output_id_spec
-    ):
-    # Always looping
-    while True:
-        if read_bite(
-                input_line_queue, input_fastq,
-                pass_lock,   pass_fastq,
-                fail_lock,   fail_fastq,
-                report_lock, report_csv,
-                bite_size,   limit_size, if_write_report, verbosity, 
-                memory_tracking_level,
-                operations_array, filters ,
-                output_seq_spec, output_id_spec
-                ) is 1:
-            break
-    return(0)
-
-def read_bite(
     input_line_queue, input_fastq,
     pass_lock,   pass_fastq,
     fail_lock,   fail_fastq,
@@ -258,23 +230,18 @@ def chop(
                 )
 
         # Here we execute the actual meat of the business
-        sequence_to_search = copy.copy(str(seq_holder[operation[0]].seq).upper())
+        sequence_to_search = str(seq_holder[operation[0]].seq).upper()
 
         compiled_regex = regex._compile(
             # We use this regex
-            operation[1]#, 
+            operation[1], 
             # And we use the BESTMATCH strategy, I think
-            #regex.BESTMATCH
+            regex.BESTMATCH
             )
         fuzzy_match = compiled_regex.search(
             # to search on this sequence
             sequence_to_search
             )
-        #print(gc.get_objects())
-#        print()
-#        print(gc.get_referrers(compiled_regex))
-#        print(gc.get_referents(compiled_regex))
-#        del sequence_to_search
 
         if verbosity > 3:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
@@ -309,7 +276,6 @@ def chop(
                 scores_holder[match_name+'_length'] = \
                     (scores_holder[match_name+'_end'] - 
                         scores_holder[match_name+'_start'])
-        del fuzzy_match
 
     # All these values allow use to apply filters, using this
     # function
@@ -634,30 +600,91 @@ if __name__ == '__main__':
 
     jobs = []
 
-    for i in range(1,int(args.processes)+1):
+#    for i in range(1,int(args.processes)+1):
 
-        jobs.append(
-            multiprocessing.Process(
-                target=reader,
-                args=(
-                    input_line_queue, vars(args)["input-fastq"],
-                    pass_lock, vars(args)["output-base"]+"_pass.fastq",
-                    fail_lock, vars(args)["output-base"]+"_fail.fastq",
-                    report_lock, vars(args)["output-base"]+"_report.csv",
-                    args.bite_size, args.limit, 
-                    args.write_report, args.verbose,
-                    args.memory_tracking,
-                    operations_array, args.filter ,
-                    args.output_seq, args.output_id
-                    ),
-                name="Comrade"+str(i)
+#        jobs.append(
+#            multiprocessing.Process(
+#                target=reader,
+#                args=(
+#                    input_line_queue, vars(args)["input-fastq"],
+#                    pass_lock, vars(args)["output-base"]+"_pass.fastq",
+#                    fail_lock, vars(args)["output-base"]+"_fail.fastq",
+#                    report_lock, vars(args)["output-base"]+"_report.csv",
+#                    args.bite_size, args.limit, 
+#                    args.write_report, args.verbose,
+#                    args.memory_tracking,
+#                    operations_array, args.filter ,
+#                    args.output_seq, args.output_id
+#                    ),
+#                name="Comrade"+str(i)
+#                )
+#            )
+#        if args.verbose > 0:
+#            print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
+
+    i = 0
+
+
+    processes_population_size = int(args.processes)
+
+    while True:
+
+        # Waits for the input line marker from the queue
+        current_pos = input_line_queue.get()
+        print("File position in bytes "+str(current_pos))
+        # If it's a exitpill, declare the end and return.
+        if current_pos == "exitpill":
+            input_line_queue.put("exitpill")
+            break
+        else:
+            # put it back
+            input_line_queue.put(current_pos)
+
+            jobs.append( 
+                multiprocessing.Process(
+                    target=reader,
+                    args=(
+                        input_line_queue, vars(args)["input-fastq"],
+                        pass_lock, vars(args)["output-base"]+"_pass.fastq",
+                        fail_lock, vars(args)["output-base"]+"_fail.fastq",
+                        report_lock, vars(args)["output-base"]+"_report.csv",
+                        args.bite_size, args.limit, 
+                        args.write_report, args.verbose,
+                        args.memory_tracking,
+                        operations_array, args.filter ,
+                        args.output_seq, args.output_id
+                        ),
+                    name="Comrade"+str(i)
+                    )
                 )
-            )
-        if args.verbose > 0:
-            print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
+            jobs[-1].start()
+            print(jobs)
+            processes_population_size -= 1
+            if args.verbose > 0:
+                print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
+            i += 1
 
-    for i in jobs:
-        i.start()
+        if processes_population_size > 0:
+            continue
+
+        breaker = False
+        while True:
+            if breaker:
+                break
+            time.sleep(1)
+            if args.verbose > 0:
+                print("Checking jobs...")
+            for j in range(len(jobs)):
+                if breaker:
+                    break
+                if not jobs[j].is_alive():
+                    jobs[j].join()
+                    jobs.pop(j)
+                    processes_population_size += 1
+                    breaker = True
+
+#    for i in jobs:
+#        i.start()
 
     for i in jobs:
         if i.is_alive():
