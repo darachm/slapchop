@@ -14,33 +14,17 @@ import argparse
 import itertools
 import multiprocessing 
 from Bio import Seq, SeqRecord
+import tracemalloc
+import copy
+import gc
 
-# `muppy` is for memory profiling
-from pympler import tracker
-from pympler import muppy
-from pympler import summary
-
-#from memory_profiler import profile
-
-#def output_function(o):
-#    return str(type(o))
-
-def print_muppy(threshold,message,muppy_level):
-    if muppy_level > threshold:
-        print(message)
-#        tracker.SummaryTracker().print_diff()
-#        summary.print_(summary.summarize(muppy.get_objects()))
-#        print(muppy.get_objects())
-        my_types = muppy.filter(muppy.get_objects(), Type=list)
-        print( len(my_types))
-#        if len(my_types) > 3000:
-#            print("ZERP")
-#            sorted_mytypes = sorted(my_types,key=len)
-#            ([ print(i[0:5][0]) or print(i[0:5][1][0:5]) for i in zip([len(x) for x in sorted_mytypes],sorted_mytypes)])
-#            zerp
-#        refbrowser.ConsoleBrowser(root, maxdepth=2, str_func=output_function).print_tree()
-#        print(muppy.get_size(muppy.get_objects()))
-#        print(hpy.heap())
+def print_memory_tracking(threshold,message,current_level):
+    if current_level > threshold:
+        snapshot = tracemalloc.take_snapshot() 
+        top_stats = snapshot.statistics('lineno')
+        print("\n[ Top 20 ]")
+        for stat in top_stats[:20]:
+            print(stat)
     return 0
 
 #### The reader function, the thing paralleled
@@ -51,26 +35,23 @@ def reader(
     fail_lock,   fail_fastq,
     report_lock, report_csv,
     bite_size,   limit_size, if_write_report, verbosity, 
-    muppy_level,
+    memory_tracking_level,
     operations_array, filters ,
     output_seq_spec, output_id_spec
     ):
-
     # Always looping
     while True:
-
         if read_bite(
                 input_line_queue, input_fastq,
                 pass_lock,   pass_fastq,
                 fail_lock,   fail_fastq,
                 report_lock, report_csv,
                 bite_size,   limit_size, if_write_report, verbosity, 
-                muppy_level,
+                memory_tracking_level,
                 operations_array, filters ,
                 output_seq_spec, output_id_spec
                 ) is 1:
             break
-
     return(0)
 
 def read_bite(
@@ -79,13 +60,13 @@ def read_bite(
     fail_lock,   fail_fastq,
     report_lock, report_csv,
     bite_size,   limit_size, if_write_report, verbosity, 
-    muppy_level,
+    memory_tracking_level,
     operations_array, filters ,
     output_seq_spec, output_id_spec
     ):
 
-    # `muppy` memory profiler
-    print_muppy(0,"At begin of bite",muppy_level)
+    # `memory_tracking` memory profiler
+    print_memory_tracking(0,"At begin of bite",memory_tracking_level)
 
     # Waits for the input line marker from the queue
     current_pos = input_line_queue.get()
@@ -175,7 +156,7 @@ def read_bite(
                 # and how verbose to be
                 operations_array, filters,
                 output_seq_spec, output_id_spec,
-                if_write_report, verbosity, muppy_level)
+                if_write_report, verbosity, memory_tracking_level)
 
         # This is a per-record test
         if passed:
@@ -210,19 +191,19 @@ def read_bite(
                 for i in report_records:
                     print(i,file=f)
 
-    # `muppy` memory profiler
-    print_muppy(1,"At end of bite",muppy_level)
+    # `memory_tracking` memory profiler
+    print_memory_tracking(1,"At end of bite",memory_tracking_level)
 
     return(0)
 
 def chop(
     record, operations_array, filters,
     output_seq_spec, output_id_spec,
-    if_write_report, verbosity, muppy_level
+    if_write_report, verbosity, memory_tracking_level
     ):
 
-    # `muppy` memory profiler
-    print_muppy(2,"At begin of chop()",muppy_level)
+    # `memory_tracking` memory profiler
+    print_memory_tracking(2,"At begin of chop()",memory_tracking_level)
 
     # Making the input record from the raw strings
     r0split = record[0].rstrip().split(" ",maxsplit=1)
@@ -277,13 +258,23 @@ def chop(
                 )
 
         # Here we execute the actual meat of the business
-        fuzzy_match = regex.search(
+        sequence_to_search = copy.copy(str(seq_holder[operation[0]].seq).upper())
+
+        compiled_regex = regex._compile(
             # We use this regex
-            operation[1], 
-            # to search on this sequence
-            str(seq_holder[operation[0]].seq).upper(),
+            operation[1]#, 
             # And we use the BESTMATCH strategy, I think
-            regex.BESTMATCH )
+            #regex.BESTMATCH
+            )
+        fuzzy_match = compiled_regex.search(
+            # to search on this sequence
+            sequence_to_search
+            )
+        #print(gc.get_objects())
+#        print()
+#        print(gc.get_referrers(compiled_regex))
+#        print(gc.get_referents(compiled_regex))
+#        del sequence_to_search
 
         if verbosity > 3:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
@@ -318,6 +309,7 @@ def chop(
                 scores_holder[match_name+'_length'] = \
                     (scores_holder[match_name+'_end'] - 
                         scores_holder[match_name+'_start'])
+        del fuzzy_match
 
     # All these values allow use to apply filters, using this
     # function
@@ -366,8 +358,8 @@ def chop(
             # If we want to write the report, we make it
             if if_write_report:
 
-                # `muppy` memory profiler
-                print_muppy(3,"At end of chop(), while writing",muppy_level)
+                # `memory_tracking` memory profiler
+                print_memory_tracking(3,"At end of chop(), while writing",memory_tracking_level)
 
                 return((True,output_record,
                     "\"Passed\","+
@@ -457,12 +449,13 @@ if __name__ == '__main__':
             )
 
     # memory tracker
-    parser.add_argument("-m","--muppy",action="count",default=0,
-        help="This denotes the verbosity of the `muppy` memory tracker."+
+    parser.add_argument("-m","--memory_tracking",action="count",default=0,
+        help="This denotes the verbosity of the `tracemalloc` tracker."+
             "0 is nothing"+
-            "1 is every worker bite"+
-            "2 is every read"+
-            "3 is every ?"
+            "1 is at beginning of worker bites"+
+            "2 is at end of worker bites"+
+            "2 is at beginning of chops"+
+            "3 is at end of chops"
         )
 
     # Operations
@@ -617,6 +610,10 @@ if __name__ == '__main__':
     if exit_flag == 1:
         exit(1)
 
+    # memory debugging
+    if args.memory_tracking:
+        tracemalloc.start(10)
+
     # We begin
     if args.verbose > 0:
         print("\n"+"["+str(time.time())+"]"+" : BEGIN\n")
@@ -649,7 +646,7 @@ if __name__ == '__main__':
                     report_lock, vars(args)["output-base"]+"_report.csv",
                     args.bite_size, args.limit, 
                     args.write_report, args.verbose,
-                    args.muppy,
+                    args.memory_tracking,
                     operations_array, args.filter ,
                     args.output_seq, args.output_id
                     ),
