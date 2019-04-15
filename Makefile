@@ -1,5 +1,5 @@
 
-.PHONY: container examples clean
+.PHONY: container example clean
 
 
 example: tmp/barseq_shortrun_pass.fastq tmp/barseq_longrun_pass.fastq
@@ -37,12 +37,12 @@ tmp/barseq_longrun_pass_container.fastq: example-data/barseq.fastq slapchop.sing
 		--filter "sample_length == 5 and rest_start >= 16" \
 		--verbose --verbose
 
-tmp/barseq_shortrun_pass.fastq: example-data/barseq.fastq slapchop.singularity
+tmp/barseq_shortrun_pass.fastq: example-data/barseq.fastq slapchop.py
 	mkdir -p tmp
 	python3 slapchop.py \
 		example-data/barseq.fastq tmp/barseq_shortrun \
 		--bite-size 10 --processes 3 \
-		--write-report --limit 1000 \
+		--write-report --limit 100 \
 		-o "Sample:  input   > (?P<sample>[ATCG]{5})(?P<fixed1>GTCCACGAGGTC){e<=1}(?P<rest>TCT.*){e<=1}" \
 		-o "Strain:  rest	> (?P<tag>TCT){e<=1}(?P<strain>[ATCG]{10,26})CGTACGCTGCAGGTCGAC" \
 		-o "UMITail: rest    > (?P<fixed2>CGTACGCTGCAGGTC)(?<UMItail>GAC[ATCG]G[ATCG]A[ATCG]G[ATCG]G[ATCG]G[ATCG]GAT){s<=2}" \
@@ -53,10 +53,10 @@ tmp/barseq_shortrun_pass.fastq: example-data/barseq.fastq slapchop.singularity
 		--filter "sample_length == 5 and rest_start >= 16" \
 		--verbose --verbose --verbose --verbose
 
-tmp/barseq_longrun_pass.fastq: example-data/barseq.fastq slapchop.singularity
+tmp/barseq_longrun_pass.fastq: example-data/barseq.fastq slapchop.py
 	mkdir -p tmp
 	python3 slapchop.py \
-		example-data/barseq.fastq tmp/barseq_longrun \
+		example-data/ramdisk/repeat_barseq.fastq tmp/barseq_longrun \
 		--bite-size 10 --processes 3 \
 		-o "Sample:  input   > (?P<sample>[ATCG]{5})(?P<fixed1>GTCCACGAGGTC){e<=1}(?P<rest>TCT.*){e<=1}" \
 		-o "Strain:  rest	 > (?P<tag>TCT){e<=1}(?P<strain>[ATCG]{10,26})CGTACGCTGCAGGTCGAC" \
@@ -66,8 +66,8 @@ tmp/barseq_longrun_pass.fastq: example-data/barseq.fastq slapchop.singularity
 		--output-id "input.id+'_umi='+umi1.seq+umi2.seq+umi3.seq+ \
 			umi4.seq+umi5.seq+umi6.seq+'_sample='+sample.seq" \
 		--filter "sample_length == 5 and rest_start >= 16" \
-		--verbose --verbose \
-		-m 
+		--job-polling-delay 1 \
+		--verbose #-m 
 
 clean:
 	rm -r tmp || echo ""

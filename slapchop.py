@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
 # 
-# description to be written ...
+# SLAPCHOP - Simply Looking At Pairwise Comparisons to Help Optimize Parsing
+# Name comes from first version that used SW alignments.
+# It now uses fuzzy regular expressions, so maybe it should be called something
+# else. But who cares.
 #
 
 import re
@@ -100,7 +103,6 @@ def reader(
     current_pos = ifqp.tell()
     # And detect if we're at the end of the file, if so, exitpill
     test = ifqp.readline()
-    print(test)
     if test == "" or test == "\00":
         input_line_queue.put("exitpill")
         if verbosity > 1:
@@ -429,7 +431,7 @@ if __name__ == '__main__':
             )
 
     # memory tracker
-    parser.add_argument("-m","--memory_tracking",action="count",default=0,
+    parser.add_argument("-m","--memory-tracking",action="count",default=0,
         help="This denotes the verbosity of the `tracemalloc` tracker."+
             "0 is nothing"+
             "1 is at beginning of worker bites"+
@@ -439,7 +441,7 @@ if __name__ == '__main__':
         )
 
     # job polling delay
-    parser.add_argument("-j","--job_polling_delay",default=1,
+    parser.add_argument("-j","--job-polling-delay",default=1,type=float,
         help="How long should I wait between checking the Comrade Worker"+
             "subprocesses, to see if I should re-launch one? (in seconds)"
         )
@@ -624,7 +626,8 @@ if __name__ == '__main__':
     while True:
         # Waits for the input line marker from the queue
         current_pos = input_line_queue.get()
-        print("File position in bytes "+str(current_pos))
+        if args.verbose > 0:
+            print("Overall file position in bytes "+str(current_pos))
         # If it's a exitpill, declare the end and return.
         if type(current_pos) is str:
             input_line_queue.put("exitpill")
@@ -666,12 +669,12 @@ if __name__ == '__main__':
             time.sleep(args.job_polling_delay)
             if args.verbose > 0:
                 print("Checking jobs...")
-            for j in range(len(jobs)):
-                if breaker:
-                    break
+            j = 0
+            while j < len(jobs):
                 if not jobs[j].is_alive():
-                    print("Here's the current processes and status:")
-                    print(jobs,end="\n\n")
+                    if args.verbose > 0:
+                        print("Here's the current processes and status:")
+                        print(jobs)
                     jobs[j].join()
                     jobs.pop(j)
                     if processes_population_size == int(args.processes):
@@ -680,6 +683,9 @@ if __name__ == '__main__':
                             )
                     processes_population_size += 1
                     breaker = True
+                    if args.verbose > 0:
+                        print()
+                j += 1
 
     for i in jobs:
         if i.is_alive():
