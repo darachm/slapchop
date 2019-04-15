@@ -49,7 +49,7 @@ def reader(
     # If it's a exitpill, declare the end and return.
     # It's not a poisonpill, because some people have lost
     # actual people to suicide.
-    if current_pos is "exitpill":
+    if type(current_pos) is str: 
         if verbosity > 1:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " with pid "+
@@ -408,7 +408,7 @@ if __name__ == '__main__':
 
     # Resources details
     parser.add_argument("--processes",default=1)
-    parser.add_argument("--bite-size",default=1000,
+    parser.add_argument("--bite-size",default=100000,
         help="The size of bites to chomp off of the input file for "+
             "multi-process, also the max size of the disk write "+
             "caching."
@@ -663,9 +663,7 @@ if __name__ == '__main__':
             continue
 
         breaker = False
-        while True:
-            if breaker:
-                break
+        while not breaker:
             time.sleep(args.job_polling_delay)
             if args.verbose > 0:
                 print("Checking jobs...")
