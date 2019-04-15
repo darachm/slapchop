@@ -46,7 +46,7 @@ def reader(
     # If it's a exitpill, declare the end and return.
     # It's not a poisonpill, because some people have lost
     # actual people to suicide.
-    if current_pos == "exitpill":
+    if current_pos is "exitpill":
         if verbosity > 1:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " with pid "+
@@ -58,7 +58,7 @@ def reader(
 
     # Next we try to use the limit_size to see if we should stop
     if limit_size is not None:
-        if current_pos > limit_size:
+        if int(current_pos) > limit_size:
             if verbosity > 1:
                 print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                     " with pid "+
@@ -79,27 +79,40 @@ def reader(
     # is reading the file, so let's open it
     ifqp = open(input_fastq,"r")
     # Go to that position
-    ifqp.seek(current_pos)
+    ifqp.seek(int(current_pos))
     # And read a chunk. We use an iterator because we have to be
     # line-oriented but the position marker is byte-oriented.
     chunk = []
-    for i in range(bite_size*4):
-        chunk.append(ifqp.readline())
+    i = 0
+    while i < (bite_size*4):
+        ( line1, line2, line3, line4 ) = ( 
+            ifqp.readline(), ifqp.readline(), ifqp.readline(), ifqp.readline() 
+            )
+        i += 4
+        if line1 and line2 and line3 and line4:
+            chunk.append(line1)
+            chunk.append(line2)
+            chunk.append(line3)
+            chunk.append(line4)
+        else:
+            break
     # We read back the current position in bytes
     current_pos = ifqp.tell()
     # And detect if we're at the end of the file, if so, exitpill
-    if ifqp.readline() == "":
+    test = ifqp.readline()
+    print(test)
+    if test == "" or test == "\00":
+        input_line_queue.put("exitpill")
         if verbosity > 1:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
                 " with pid "+
                 str(multiprocessing.current_process().pid)+
                 " found the end and is done"
                 )
-        input_line_queue.put("exitpill")
     # Otherwise, then just put the current position back in the
     # queue
     else:
-        input_line_queue.put(current_pos)
+        input_line_queue.put(int(current_pos))
     ifqp.close()
 
     # Let's make some arrays to hold three kinds of records.
@@ -128,7 +141,8 @@ def reader(
                 # and how verbose to be
                 operations_array, filters,
                 output_seq_spec, output_id_spec,
-                if_write_report, verbosity, memory_tracking_level)
+                if_write_report, verbosity, memory_tracking_level,
+                input_fastq)
 
         # This is a per-record test
         if passed:
@@ -171,7 +185,7 @@ def reader(
 def chop(
     record, operations_array, filters,
     output_seq_spec, output_id_spec,
-    if_write_report, verbosity, memory_tracking_level
+    if_write_report, verbosity, memory_tracking_level, input_fastq
     ):
 
     # `memory_tracking` memory profiler
@@ -424,6 +438,12 @@ if __name__ == '__main__':
             "3 is at end of chops"
         )
 
+    # job polling delay
+    parser.add_argument("-j","--job_polling_delay",default=1,
+        help="How long should I wait between checking the Comrade Worker"+
+            "subprocesses, to see if I should re-launch one? (in seconds)"
+        )
+
     # Operations
     parser.add_argument("--operation","-o",action="append",
         help="The pattern to match and extract. This has a "+
@@ -599,46 +619,19 @@ if __name__ == '__main__':
     # We start some jobs, one per process
 
     jobs = []
-
-#    for i in range(1,int(args.processes)+1):
-
-#        jobs.append(
-#            multiprocessing.Process(
-#                target=reader,
-#                args=(
-#                    input_line_queue, vars(args)["input-fastq"],
-#                    pass_lock, vars(args)["output-base"]+"_pass.fastq",
-#                    fail_lock, vars(args)["output-base"]+"_fail.fastq",
-#                    report_lock, vars(args)["output-base"]+"_report.csv",
-#                    args.bite_size, args.limit, 
-#                    args.write_report, args.verbose,
-#                    args.memory_tracking,
-#                    operations_array, args.filter ,
-#                    args.output_seq, args.output_id
-#                    ),
-#                name="Comrade"+str(i)
-#                )
-#            )
-#        if args.verbose > 0:
-#            print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
-
     i = 0
-
-
     processes_population_size = int(args.processes)
-
     while True:
-
         # Waits for the input line marker from the queue
         current_pos = input_line_queue.get()
         print("File position in bytes "+str(current_pos))
         # If it's a exitpill, declare the end and return.
-        if current_pos == "exitpill":
+        if type(current_pos) is str:
             input_line_queue.put("exitpill")
             break
         else:
             # put it back
-            input_line_queue.put(current_pos)
+            input_line_queue.put(int(current_pos))
 
             jobs.append( 
                 multiprocessing.Process(
@@ -658,7 +651,6 @@ if __name__ == '__main__':
                     )
                 )
             jobs[-1].start()
-            print(jobs)
             processes_population_size -= 1
             if args.verbose > 0:
                 print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
@@ -671,20 +663,23 @@ if __name__ == '__main__':
         while True:
             if breaker:
                 break
-            time.sleep(1)
+            time.sleep(args.job_polling_delay)
             if args.verbose > 0:
                 print("Checking jobs...")
             for j in range(len(jobs)):
                 if breaker:
                     break
                 if not jobs[j].is_alive():
+                    print("Here's the current processes and status:")
+                    print(jobs,end="\n\n")
                     jobs[j].join()
                     jobs.pop(j)
+                    if processes_population_size == int(args.processes):
+                        raise("Well all processes are stalled out, somethings"+
+                            "off. Kill this and figure it out?"
+                            )
                     processes_population_size += 1
                     breaker = True
-
-#    for i in jobs:
-#        i.start()
 
     for i in jobs:
         if i.is_alive():
