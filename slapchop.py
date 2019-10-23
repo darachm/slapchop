@@ -624,17 +624,19 @@ if __name__ == '__main__':
     i = 0
     processes_population_size = int(args.processes)
     while True:
+
         # Waits for the input line marker from the queue
         current_pos = input_line_queue.get()
+
         if args.verbose > 0:
             print("Overall file position in bytes "+str(current_pos))
+
         # If it's a exitpill, declare the end and return.
         if type(current_pos) is str:
             input_line_queue.put("exitpill")
             break
+
         else:
-            # put it back
-            input_line_queue.put(int(current_pos))
 
             jobs.append( 
                 multiprocessing.Process(
@@ -658,6 +660,10 @@ if __name__ == '__main__':
             if args.verbose > 0:
                 print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
             i += 1
+
+            # put it back
+            input_line_queue.put(int(current_pos))
+
 
         if processes_population_size > 0:
             continue
