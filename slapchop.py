@@ -82,9 +82,9 @@ def reader(
     # If we have the current_pos from above, then no-one else
     # is reading the file, so let's open it
     if is_zipped:
-        ifqp = gzip.open(input_fastq,"r")
+        ifqp = gzip.open(input_fastq,"rt")
     else:
-        ifqp = open(input_fastq,"r")
+        ifqp = open(input_fastq,"rt")
     # Go to that position
     ifqp.seek(int(current_pos))
     # And read a chunk. We use an iterator because we have to be
@@ -107,7 +107,7 @@ def reader(
     current_pos = ifqp.tell()
     # And detect if we're at the end of the file, if so, exitpill
     test = ifqp.readline()
-    if test is "" or test is "\00" or test is b"":
+    if test is "" or test is "\00":
         input_line_queue.put("exitpill")
         if verbosity > 1:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
@@ -198,12 +198,12 @@ def chop(
     print_memory_tracking(2,"At begin of chop()",memory_tracking_level)
 
     # Making the input record from the raw strings
-    r0split = str(record[0]).rstrip().split(" ",maxsplit=1)
-    input_record = SeqRecord.SeqRecord(Seq.Seq(str(record[1]).rstrip()),
+    r0split = record[0].rstrip().split(" ",maxsplit=1)
+    input_record = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
         id = r0split[0], 
         description = r0split[1] if len(r0split) == 2 else ""
         )
-    input_record.letter_annotations['phred_letters'] =  str(record[3])[0:len(str(record[1]).rstrip())]
+    input_record.letter_annotations['phred_letters'] =  record[3][0:len(record[1].rstrip())]
 
     # Making a spacer thing
     spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
