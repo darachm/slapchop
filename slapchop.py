@@ -18,7 +18,7 @@ import itertools
 import multiprocessing 
 from Bio import Seq, SeqRecord
 import tracemalloc
-import time
+import gzip
 
 def print_memory_tracking(threshold,message,current_level):
     if current_level > threshold:
@@ -34,6 +34,7 @@ def reader(
     pass_lock,   pass_fastq,
     fail_lock,   fail_fastq,
     report_lock, report_csv,
+    is_zipped,
     bite_size,   limit_size, if_write_report, verbosity, 
     memory_tracking_level,
     operations_array, filters ,
@@ -80,7 +81,10 @@ def reader(
 
     # If we have the current_pos from above, then no-one else
     # is reading the file, so let's open it
-    ifqp = open(input_fastq,"r")
+    if is_zipped:
+        ifqp = gzip.open(input_fastq,"rt")
+    else:
+        ifqp = open(input_fastq,"rt")
     # Go to that position
     ifqp.seek(int(current_pos))
     # And read a chunk. We use an iterator because we have to be
@@ -103,7 +107,7 @@ def reader(
     current_pos = ifqp.tell()
     # And detect if we're at the end of the file, if so, exitpill
     test = ifqp.readline()
-    if test == "" or test == "\00":
+    if test is "" or test is "\00":
         input_line_queue.put("exitpill")
         if verbosity > 1:
             print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
@@ -248,7 +252,7 @@ def chop(
         # Here we execute the actual meat of the business
         sequence_to_search = str(seq_holder[operation[0]].seq).upper()
 
-        compiled_regex = regex._compile(
+        compiled_regex = regex.compile(
             # We use this regex
             operation[1], 
             # And we use the BESTMATCH strategy, I think
@@ -406,6 +410,10 @@ if __name__ == '__main__':
     parser.add_argument("input-fastq",
         help="The FASTQ formatted file to process.")
 
+    # gzip format
+    parser.add_argument("-z","--gzipped",action="store_true",
+        help="Is input FASTQ actually a FASTQZ, so gzipped FASTQ?")
+
     # Resources details
     parser.add_argument("--processes",default=1)
     parser.add_argument("--bite-size",default=100000,
@@ -546,6 +554,7 @@ if __name__ == '__main__':
 
     if args.verbose > 0:
         print("\n"+"["+str(time.time())+"]"+" : "+"I'm reading in '"+vars(args)["input-fastq"]+"', "+
+            "treating it as a "+("zipped" if args.gzipped else "unzipped")+" file and "+
             "applying these operations of alignment :\n")
         for each in operations_array:
             print("- "+each[0]+" :\n"+
@@ -644,6 +653,7 @@ if __name__ == '__main__':
                         pass_lock, vars(args)["output-base"]+"_pass.fastq",
                         fail_lock, vars(args)["output-base"]+"_fail.fastq",
                         report_lock, vars(args)["output-base"]+"_report.csv",
+                        args.gzipped,
                         args.bite_size, args.limit, 
                         args.write_report, args.verbose,
                         args.memory_tracking,
