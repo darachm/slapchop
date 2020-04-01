@@ -1,27 +1,43 @@
 # SLAPCHOP
 
-This is a script that takes each read from a big fastq file, and
-uses fuzzy regular expressions to look for anchor sequences and 
-use those to cut the matching sequence groups into groups. 
-It then repeats this for as many actions
-as you specify, and then writes a new FASTQ file as specified from
-the regex capture groups. 
+SLAPCHOP.py parses Illumina reads using patterns to extract barcodes.
 
-Also available as [a singularity containter](https://www.singularity-hub.org/collections/1361)!
-So you if you have Singularity installed you can just use it 
-(without worrying about dependencies) with: 
-`singularity run shub://darachm/slapchop -h` (to show the argument
-help message for example).
+By using fuzzy regular expressions we can chop robustly barcodes from 
+indeterminate positions, filter the results based on sequence or match 
+properties, and reassemble a fastq record from the results.
 
-This is designed as a tool to parse amplicon sequencing data using
-more than just fixed positional anchors. By using regular expressions
-we can chop barcodes from indeterminate positions, reassemble a 
-fastq record from the results, and filter the results based on 
-filters of match positions or types of differences.
+Available as 
+[a singularity containter](https://www.singularity-hub.org/collections/1361)!
+So you if you have 
+[Singularity](https://github.com/sylabs/singularity/releases)
+installed you can just use it (without worrying about dependencies) with: 
+`singularity run shub://darachm/slapchop:latest -h` (to download and show the 
+argument help message for example). Then you use it like
+`singularity run shub://darachm/slapchop:latest whatever.fastq arguments added`
 
-For a verbose example of a debugging run:
+More completely, this tool is a python script. You give it a FASTQ(Z) file and 
+some operations to do, and it'll do the following:
 
-    ./slapchop.py input.fastq output_basename \
+    - read chunks of Illumina-format sequencing reads
+    - apply a series of operations:
+        - match fuzzy regular expression to original sequence or previous
+            capture groups
+        - extract capture groups and start next operation
+    - apply pythonic filters (pass/fail) on sequence or quality properties 
+        (like average quality or group length)
+    - apply pythonic constructors to construct new FASTQ read from the capture
+        groups (so ID plus the last four bases of the UMI plus length of whatever)
+    - write out these reads to new files of pass and fail
+
+For tuning/debugging/designing it has some verbosity modes to spill the gory
+details of each operation in stats files, and should still have some memory
+profiling functionality to debug memory leaks (fixed that one).
+
+For a very very verbose example of a debugging run:
+
+    ./slapchop.py \
+        input.fastqz -z \
+        output_basename \
         --bite-size 10 --processes 3  \
         --write-report --limit 10000 \
         -o "Sample:  input   > (?P<sample>[ATCG]{5})(?P<fixed1>GTCCACGAGGTC){e<=1}(?P<rest>TCT.*){e<=1}" \
@@ -82,16 +98,5 @@ yeast BarSeq, btw.
 This script depends strongly upon (uses) the work of 
 [regex](https://pypi.org/project/regex/)
 and
-[Biopython](https://pypi.org/project/biopython/).
-
----
-
-Todo.......
-
-- Needs more tutorial/examples/documentation
-- Report generation R scripts, so making summary plots from these 
-    report.csv's
-- Unit tests on choice examples from the sequencing ??? Maybe the
-    examples above. Might be hard with the stochasticity of
-    parallelism.
+[Biopython](https://pypi.org/project/biopython/). Thanks! Check them out...
 
