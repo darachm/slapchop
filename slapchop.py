@@ -252,7 +252,7 @@ def chop(
         # Here we execute the actual meat of the business
         sequence_to_search = str(seq_holder[operation[0]].seq).upper()
 
-        compiled_regex = regex._compile(
+        compiled_regex = regex.compile(
             # We use this regex
             operation[1], 
             # And we use the BESTMATCH strategy, I think
