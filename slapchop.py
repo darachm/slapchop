@@ -82,9 +82,9 @@ def reader(
     # If we have the current_pos from above, then no-one else
     # is reading the file, so let's open it
     if is_zipped:
-        ifqp = gzip.open(input_fastq,"rt")
+        ifqp = gzip.open(input_fastq,"rt",encoding="utf-8")
     else:
-        ifqp = open(input_fastq,"rt")
+        ifqp = open(input_fastq,"rt",encoding="utf-8")
     # Go to that position
     ifqp.seek(int(current_pos))
     # And read a chunk. We use an iterator because we have to be
