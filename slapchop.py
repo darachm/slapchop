@@ -19,7 +19,6 @@ import multiprocessing
 from Bio import Seq, SeqRecord
 import tracemalloc
 import gzip
-import io
 
 def print_memory_tracking(threshold,message,current_level):
     if current_level > threshold:
@@ -83,9 +82,9 @@ def reader(
     # If we have the current_pos from above, then no-one else
     # is reading the file, so let's open it
     if is_zipped:
-        ifqp = io.BufferedReader(gzip.open(input_fastq,"rt",encoding="utf-8"))
+        ifqp = gzip.open(input_fastq,"rt",encoding="utf-8")
     else:
-        ifqp = io.BufferedReader(open(input_fastq,"rt",encoding="utf-8"))
+        ifqp = open(input_fastq,"rt",encoding="utf-8")
     # Go to that position
     ifqp.seek(int(current_pos))
     # And read a chunk. We use an iterator because we have to be
