@@ -50,93 +50,63 @@ def reader(
     else:
         input_seqs = SeqIO.parse(sys.stdin,"fastq")
 
+    # Turn operations array into regexes !!!
+    # Or any other stuff used multiple times !!!
+
+    pass_records = []
+    fail_records = []
+    report_records = []
+
     for each_seq in input_seqs:
-        chop(each_seq
-            )
 
-        (passed, output_record, report_object) = \
-            chop(
-                chunk[slice(slice_base,(slice_base+4))],
-                operations_array, filters,
-                output_array
-                report, verbosity, memory_tracking_level,
-                input_fastq)
+        for (passed, output_record, report_object) in chop(each_seq, 
+                    operations_array,filters,outputs_array,
+                    report_file,verbosity):
 
-        # This is a per-record test
-        if passed:
-            pass_records.append(output_record)
-        else:
-            fail_records.append(output_record)
-        if if_write_report:
-            report_records.append(report_object)
-
-        del passed
-        del output_record
-        del report_object
+            # This is a per-record test
+            if passed:
+                pass_records.append(output_record)
+            else:
+                fail_records.append(output_record)
+            if report_file is not None:
+                report_records.append(report_object)
     
-    # Then we write out the records with the appropriate locks
-    with pass_lock:
-        with open(pass_fastq,"a") as f:
-            for i in pass_records:
-                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                        i.letter_annotations['phred_letters'],
-                    file=f)
+    if output_file is None:
+        SeqIO.write(pass_records,sys.stdout,"fastq")
+    else:
+        SeqIO.write(pass_records,output_file,"fastq")
 
-    with fail_lock:
-        with open(fail_fastq,"a") as f:
-            for i in fail_records:
-                print(str(i.id)+"\n"+str(i.seq)+"\n"+"+"+"\n"+
-                        i.letter_annotations['phred_letters'],
-                    file=f)
+    if failed_file is not None:
+        SeqIO.write(fail_records,failed_file,"fastq")
 
-    if if_write_report:
-        with report_lock:
-            with open(report_csv,"a") as f:
-                for i in report_records:
-                    print(i,file=f)
-
-    # `memory_tracking` memory profiler
-    print_memory_tracking(1,"At end of bite",memory_tracking_level)
+    if report_file is not None:
+        with open(report_file,"a") as f:
+            for i in report_records:
+                print(i,file=f)
 
     return(0)
 
 def chop(
-    record, operations_array, filters,
-    output_seq_spec, output_id_spec,
-    if_write_report, verbosity, memory_tracking_level, input_fastq
+    input_record, operations_array, filters,
+    outputs_array, report_file, verbosity
     ):
-
-    # `memory_tracking` memory profiler
-    print_memory_tracking(2,"At begin of chop()",memory_tracking_level)
-
-    # Making the input record from the raw strings
-    r0split = record[0].rstrip().split(" ",maxsplit=1)
-    input_record = SeqRecord.SeqRecord(Seq.Seq(record[1].rstrip()),
-        id = r0split[0], 
-        description = r0split[1] if len(r0split) == 2 else ""
-        )
-    input_record.letter_annotations['phred_letters'] =  record[3][0:len(record[1].rstrip())]
 
     # Making a spacer thing
     spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
     spacer.letter_annotations['phred_letters'] = "I"
 
-    # Make the right quality scores
-    input_record.letter_annotations['phred_quality'] = [ ord(i)-33 for i in input_record.letter_annotations['phred_letters'] ]
-
     # We make some holders for these operations
     scores_holder = dict()
     seq_holder = {'spacer': spacer, 'input': input_record}
 
-#rewrite as a class ????
+    print(input_record)
 
     # Chop grained verbosity
     if verbosity > 2:
-        print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+        print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
             " starting to process :\n  "+
             input_record.id+"\n  "+
-            input_record.seq+"\n  "+
-            input_record.letter_annotations['phred_letters']
+            input_record.seq+"\n  "#+ #input_record.letter_annotations['phred_letters']
             )
 
     for each_operation in operations_array:
@@ -149,14 +119,14 @@ def chop(
         # from input stream!
         if operation[0] not in seq_holder.keys():
             if verbosity > 3:
-                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                 " can't find the sequence named `"+
                 operation[0]+"` in the holder, so continuing."
                 )
             continue
 
         if verbosity > 3:
-            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+            print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                 " attempting to match : "+operation[1]+
                 " against "+seq_holder[operation[0]].seq
                 )
@@ -176,7 +146,7 @@ def chop(
             )
 
         if verbosity > 3:
-            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+            print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                 " match is : "+
                 str(fuzzy_match)
                 )
@@ -241,55 +211,59 @@ def chop(
     else:
 
         try:
-            # We attempt to form the correct output record based on
-            # the arguments given
-            output_record = evaluate_output_directives(
-                output_seq_spec,output_id_spec,seq_holder) 
+            # We attempt to form the correct output records
+            output_records = [ evaluate_output_directives(i, j, seq_holder) for i, j in outputs_array ]
+            print(output_records)
 
             if verbosity > 2:
-                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                     " evaluated the filters as : "+
                     str(evaluated_filters)+
                     " and so passed!"
                     )
 
             # If we want to write the report, we make it
-            if if_write_report:
-
-                # `memory_tracking` memory profiler
-                print_memory_tracking(3,"At end of chop(), while writing",memory_tracking_level)
-
-                return((True,output_record,
-                    "\"Passed\","+
-                    "\""+output_record.id+"\",\""+
-                        output_record.seq+"\",\""+
-                        re.sub("\"","\\\"",re.sub(",","\,",
-                            json.dumps(scores_holder)))+"\""
-                    ))
+            if report_file is not None:
+                return(
+                    [ (True,output_record,
+                        "\"Passed\","+
+                        "\""+output_record.id+"\",\""+
+                            output_record.seq+"\",\""+
+                            re.sub("\"","\\\"",re.sub(",","\,",
+                                json.dumps(scores_holder)))+"\""
+                        ) for output_record in output_records ]
+                    )
             # Otherwise, just the record and if it passed
             else:
-                return((True,output_record,""))
+                return(
+                    [ (True,output_record,"") 
+                        for output_record in output_records ]
+                    )
 
         except:
 
             if verbosity > 2:
-                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+                print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                     " failed upon forming the output."
                     )
 
-            if if_write_report:
-                return((False,input_record,
-                    "\"FailedDirectivesToMakeOutputSeq\","+
-                    "\""+input_record.id+"\",\""+
-                        input_record.seq+"\",\""+
-                        re.sub("\"","\\\"",re.sub(",","\,",
-                            json.dumps(scores_holder)))+"\""
-                    ))
+
+            # If we want to write the report, we make it
+            if report_file is not None:
+                return(
+                    [ (False,output_record,
+                        "\"FailedDirectivesToMakeOutputSeq\","+
+                        "\""+input_record.id+"\",\""+
+                            input_record.seq+"\",\""+
+                            re.sub("\"","\\\"",re.sub(",","\,",
+                                json.dumps(scores_holder)))+"\""
+                        ) ]
+                    )
+            # Otherwise, just the record and if it passed
             else:
-                return((False,input_record,""))
+                return( [ (False,input_record,"") ] )
 
-
-def evaluate_output_directives(output_seq, output_id, seq_holder):
+def evaluate_output_directives(output_id, output_seq, seq_holder):
     # Here we evaluate them but using that dictionary as the global
     # dictionary, because done is better than dogma.
     return_record    = eval(output_seq,{},seq_holder)
