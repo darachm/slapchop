@@ -20,134 +20,46 @@ from Bio import Seq, SeqRecord
 import tracemalloc
 import gzip
 
-def print_memory_tracking(threshold,message,current_level):
-    if current_level > threshold:
-        snapshot = tracemalloc.take_snapshot() 
-        top_stats = snapshot.statistics('lineno')
-        print("\n[ Top 20 ]")
-        for stat in top_stats[:20]:
-            print(stat)
-    return 0
+import sys
+from Bio import SeqIO
 
 def reader(
-    input_line_queue, input_fastq,
-    pass_lock,   pass_fastq,
-    fail_lock,   fail_fastq,
-    report_lock, report_csv,
-    is_zipped,
-    bite_size,   limit_size, if_write_report, verbosity, 
-    memory_tracking_level,
-    operations_array, filters ,
-    output_seq_spec, output_id_spec
+    input_file,is_gzipped,output_file,failed_file,report_file,
+    verbosity,
+    #memory_tracking_level,
+    operations_array, 
+    filters ,
+    outputs_array
     ):
 
-    # `memory_tracking` memory profiler
-    print_memory_tracking(0,"At begin of bite",memory_tracking_level)
+    print(
+        input_file,is_gzipped,output_file,failed_file,report_file,
+        verbosity,
+        #memory_tracking_level,
+        operations_array, 
+        filters ,
+        outputs_array
+        )
 
-    # Waits for the input line marker from the queue
-    current_pos = input_line_queue.get()
-
-    # If it's a exitpill, declare the end and return.
-    # It's not a poisonpill, because some people have lost
-    # actual people to suicide.
-    if type(current_pos) is str: 
-        if verbosity > 1:
-            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
-                " with pid "+
-                str(multiprocessing.current_process().pid)+
-                " found a exit pill and is exiting"
-                )
-        input_line_queue.put("exitpill")
-        return(1)
-
-    # Next we try to use the limit_size to see if we should stop
-    if limit_size is not None:
-        if int(current_pos) > limit_size:
-            if verbosity > 1:
-                print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
-                    " with pid "+
-                    str(multiprocessing.current_process().pid)+
-                    " exceeded the limit and is exiting"
-                    )
-            input_line_queue.put("exitpill")
-            return(1)
-
-    # Tell us what you're doing?
-    if verbosity > 1:
-        print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
-            " trying to read a chunk of size "+
-            str(bite_size)+" fastq records."
-            )
-
-    # If we have the current_pos from above, then no-one else
-    # is reading the file, so let's open it
-    if is_zipped:
-        ifqp = gzip.open(input_fastq,"rt",encoding="utf-8")
-    else:
-        ifqp = open(input_fastq,"rt",encoding="utf-8")
-    # Go to that position
-    ifqp.seek(int(current_pos))
-    # And read a chunk. We use an iterator because we have to be
-    # line-oriented but the position marker is byte-oriented.
-    chunk = []
-    i = 0
-    while i < (bite_size*4):
-        ( line1, line2, line3, line4 ) = ( 
-            ifqp.readline(), ifqp.readline(), ifqp.readline(), ifqp.readline() 
-            )
-        i += 4
-        if line1 and line2 and line3 and line4:
-            chunk.append(line1)
-            chunk.append(line2)
-            chunk.append(line3)
-            chunk.append(line4)
+    if input_file is not None:
+        if is_gzipped:
+            with gzip.open(input_file,"rt") as input_file_gz:
+                input_seqs = SeqIO.parse(input_file_gz,"fastq")
         else:
-            break
-    # We read back the current position in bytes
-    current_pos = ifqp.tell()
-    # And detect if we're at the end of the file, if so, exitpill
-    test = ifqp.readline()
-    if test is "" or test is "\00":
-        input_line_queue.put("exitpill")
-        if verbosity > 1:
-            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
-                " with pid "+
-                str(multiprocessing.current_process().pid)+
-                " found the end and is done"
-                )
-    # Otherwise, then just put the current position back in the
-    # queue
+            input_seqs = SeqIO.parse(input_file,"fastq")
     else:
-        input_line_queue.put(int(current_pos))
-    ifqp.close()
+        input_seqs = SeqIO.parse(sys.stdin,"fastq")
 
-    # Let's make some arrays to hold three kinds of records.
-    # First is those that pass filters, then those that fail.
-    # The last is the report if you've made that option
-    pass_records = []
-    fail_records = []
-    # We make report_records empty even if not using it
-    report_records = []
+    for each_seq in input_seqs:
+        chop(each_seq
+            )
 
-    # We use itertools to slice 4 line chunks (this is fastq)
-    for slice_base in itertools.islice(range(len(chunk)),0,None,4):
-
-        # if it's empty, we must have butted against the end
-        # of the file, but we already inserted the exitpill
-        if chunk[slice_base] == "":
-            break
-
-        # Otherwise, call chop and save the returns 
         (passed, output_record, report_object) = \
             chop(
-                # This is the actual fastq record
                 chunk[slice(slice_base,(slice_base+4))],
-                # This is the operations to do, filters, 
-                # then if to save report records,
-                # and how verbose to be
                 operations_array, filters,
-                output_seq_spec, output_id_spec,
-                if_write_report, verbosity, memory_tracking_level,
+                output_array
+                report, verbosity, memory_tracking_level,
                 input_fastq)
 
         # This is a per-record test
@@ -406,53 +318,41 @@ if __name__ == '__main__':
 
     # Name and description
     parser = argparse.ArgumentParser(description=""+
-        "slapchop.py")
-    parser.add_argument("input-fastq",
-        help="The FASTQ formatted file to process.")
+        "slapchop.py - we expect to have a standard FASTQ piped in on STDIN"+
+        "")
 
+    # Optional input file, but we're expecting STDIN as inputs
+    parser.add_argument("--input",default=None,
+        help="An FASTQ(Z) file to parse, we expect STDIN but it's an option.")
     # gzip format
     parser.add_argument("-z","--gzipped",action="store_true",
-        help="Is input FASTQ actually a FASTQZ, so gzipped FASTQ?")
+        help="Is input file actually a FASTQZ, so gzipped FASTQ?")
 
-    # Resources details
-    parser.add_argument("--processes",default=1)
-    parser.add_argument("--bite-size",default=100000,
-        help="The size of bites to chomp off of the input file for "+
-            "multi-process, also the max size of the disk write "+
-            "caching."
+    # Output files
+    parser.add_argument("--output",default=None,
+        help="Name of output file, incase you want to write it to a file, "+
+            "but we expect it to go to STDOUT. "+
+            "For example: basename.fastq, basename.report")
+    parser.add_argument("--failed",default=None,
+        help="Name of output file for failed reads, for debugging."+
+            "If you say 'STDOUT' then it'll go there. "
         )
-    parser.add_argument("--limit",default=None,
-        help="The limit of reads to process, useful for just "+
-            "proofing that your operations are actually working, "+
-            "and for collecting stats in the report for setting "+
-            "filters."
-        )
+    parser.add_argument("--report",default=None,
+        help="Add this flag with a filename to print a report of per-read "+
+            "statistics, that's a lot of disk writes btw, but "+
+            "would be good in combination with a limited argument "+
+            "so that you can spec out the kinds of noise you got "+
+            "in your data.")
 
     # verbosity
     parser.add_argument("-v","--verbose",action="count",default=0,
-        help=" 0 is nothing, "+
+        help="How much debugging issues should I pipe out to STDERR?"+
+            "0 is nothing, "+
             "1 is setup messages and start-stop messsages, "+
             "2 is worker-level details, "+
             "3 is chop-level details, "+
-            "4 is each operation level details."+
-            "All to standard out, so be ready for it."
+            "4 is each operation level details."
             )
-
-    # memory tracker
-    parser.add_argument("-m","--memory-tracking",action="count",default=0,
-        help="This denotes the verbosity of the `tracemalloc` tracker."+
-            "0 is nothing"+
-            "1 is at beginning of worker bites"+
-            "2 is at end of worker bites"+
-            "2 is at beginning of chops"+
-            "3 is at end of chops"
-        )
-
-    # job polling delay
-    parser.add_argument("-j","--job-polling-delay",default=1,type=float,
-        help="How long should I wait between checking the Comrade Worker"+
-            "subprocesses, to see if I should re-launch one? (in seconds)"
-        )
 
     # Operations
     parser.add_argument("--operation","-o",action="append",
@@ -465,61 +365,43 @@ if __name__ == '__main__':
 
     # Filter specification
     parser.add_argument("--filter","-f",action="append",
-        help="A filter for eliminating reads that don't pass some "+
+        help="Filters for eliminating reads that don't pass some "+
             "alignment based cutoff. This is specified per "+
             "operation, so remember the name from above. "+
             "Every sequence has a _start, _end, and _length "+
             "calculated. You're welcome."
             )
 
-    # Output stream
-    parser.add_argument("--output-id",
-        help="Format for the output file id, per read that passes "+
-            "filter. This is supposed to be a string, so you can "+
-            "access .id or .seq properties of the sequences. You "+
+    # Outputs
+    parser.add_argument("--output-id",action="append",
+        help="A list of output IDs, in the same order as for output-seq. "+
+            "This is for reads that pass filter. This is evaluated, so you "+
+            "can access .id or .seq properties of the sequences. You "+
             "probably want to include `input.id` in there.",
-        default="input.id")
-    parser.add_argument("--output-seq",
-        help="Format for the output file seq, per read that "+
-            "passes filter. This is a Biopython SeqRecord, so "+
-            "you need to just specify the names of the caputure "+
+        )
+    parser.add_argument("--output-seq",action="append",
+        help="A list of output seqs, in the same order as for output-ids. "+
+            "This is a Biopython SeqRecord, so "+
+            "you need to just specify the names of the captured "+
             "groups. You can't access .id or _length properties or "+
-            "the like. This is not for that, put it in the "+
-            "output-id.",
-        default="input")
-
-    # Output files
-    parser.add_argument("output-base",
-        help="Base name for the output, will be used to make, "+
-            "for example: basename.fastq, basename.report")
-    parser.add_argument("--write-report",action='store_true',
-        help="Add this flag to print a report of per-read "+
-            "statistics, that's a lot of disk writes btw, but "+
-            "would be good in combination with a --limit argument "+
-            "so that you can spec out the kinds of noise you got "+
-            "in your data.")
-    parser.add_argument("--maxQueueSize",help="in gigs",default=10)
+            "the like! This is not for that, put it in the "+
+            "output-id. Why? Because need to access qualities for printing.",
+        )
 
 #### Parse, clean up, and possibly report arguments
 
     args = parser.parse_args()
 
-    # Convert to integer so I don't have to later
-    args.bite_size = int(args.bite_size)
-    try:
-        args.limit = int(args.limit)
-    except:
-        pass
-
-    # Operations are read as an array of dicts to keep it ordered
+    # Operations, outputs are read as an array of dicts to keep it ordered
     operations_array = []
+    outputs_array = []
 
     try:
 
         for each in args.operation:
 
             # Split on the colon to specify the name on the left of it
-            (name, instruction) = each.split(":")
+            (name, instruction) = each.split(':')
 
             if instruction.find("<spacer>") > 0:
                 print("Hey, you can't name a capture group "+
@@ -552,9 +434,28 @@ if __name__ == '__main__':
             "Exiting...")
         exit(1)
 
+    try:
+
+        for each_id, each_seq in zip(args.output_id, args.output_seq):
+
+            # append that to the outputs array
+            outputs_array.append( [each_id, each_seq] )
+
+    except:
+
+        # Failure likely from lack of operations to do
+        print("\n"+"["+str(time.time())+"]"+" : "+
+            "Wait a second, I don't understand the "+
+            "outputs to be done! Are there any? "+
+            "Maybe there's small part I'm choking on? "+
+            "Maybe try adding steps in one at a time in "+
+            "interactive context on a test set? "+
+            "Exiting...")
+        exit(1)
+
     if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : "+"I'm reading in '"+vars(args)["input-fastq"]+"', "+
-            "treating it as a "+("zipped" if args.gzipped else "unzipped")+" file and "+
+        print("\n"+"["+str(time.time())+"]"+" : "+"I'm reading in '"+#vars(args)["input-fastq"]+"', "+
+            #"treating it as a "+("zipped" if args.gzipped else "unzipped")+" file and "+
             "applying these operations of alignment :\n")
         for each in operations_array:
             print("- "+each[0]+" :\n"+
@@ -572,132 +473,51 @@ if __name__ == '__main__':
 
     if args.verbose > 0:
         print("\n"+"["+str(time.time())+"]"+" : "+"Then, I'm going to write out a FASTQ file to '"+
-            vars(args)["output-base"]+".fastq'",end="")
-        if args.write_report:
-            print(" and a report to '"+
-                vars(args)["output-base"]+"_report.csv'",end="")
+            "here or stdout")#vars(args)["output-base"]+".fastq'",end="")
+        if args.report is not None:
+            print(" and a report to '"+vars(args)["report"]+"'",end="")
         print(".")
 
-    if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : "+"I will proceed to process the file with "+
-            str(args.processes)+" processes operating in chunks of "+
-            str(args.bite_size)+" records.")
+#    # checking file existance for outputs, zipping together the 
+#    # output base with each of the three. 
+#    exit_flag = 0
+#    for each in zip( [vars(args)["output-base"]]*20,            \
+#                    ["_fail.fastq", "_pass.fastq",              \
+#                        "_report.fastq", "_report.csv" ] ):
+#        # At this stage, the tuple is joined to make the filename
+#        this_path = ''.join(each)
+#        # If the write-report flag is off and the path is the report,
+#        # then this won't trip True for that path existing
+#        if os.path.isfile(this_path) and              \
+#                not( not(args.write_report) and       \
+#                    (this_path.find("_report")>=0) ):
+#            print("\n"+"["+str(time.time())+"]"+" : "+"File "+this_path+
+#                " exits, so I'm quitting before you ask me to do "+
+#                "something you might regret.")
+#            exit_flag = 1
+#    if exit_flag == 1:
+#        exit(1)
 
-        if args.limit is not None:
-            print("But, I am limiting myself to the first "+
-                str(args.limit)+" records for this run.")
-        
-    # checking file existance for outputs, zipping together the 
-    # output base with each of the three. 
-    exit_flag = 0
-    for each in zip( [vars(args)["output-base"]]*20,            \
-                    ["_fail.fastq", "_pass.fastq",              \
-                        "_report.fastq", "_report.csv" ] ):
-        # At this stage, the tuple is joined to make the filename
-        this_path = ''.join(each)
-        # If the write-report flag is off and the path is the report,
-        # then this won't trip True for that path existing
-        if os.path.isfile(this_path) and              \
-                not( not(args.write_report) and       \
-                    (this_path.find("_report")>=0) ):
-            print("\n"+"["+str(time.time())+"]"+" : "+"File "+this_path+
-                " exits, so I'm quitting before you ask me to do "+
-                "something you might regret.")
-            exit_flag = 1
-    if exit_flag == 1:
-        exit(1)
-
-    # memory debugging
-    if args.memory_tracking:
-        tracemalloc.start(10)
+#    # memory debugging
+#    if args.memory_tracking:
+#        tracemalloc.start(10)
 
     # We begin
     if args.verbose > 0:
         print("\n"+"["+str(time.time())+"]"+" : BEGIN\n")
     
-#### Running the actual functions using multiprocessing
-
-    # Make a manager object
-    manager  = multiprocessing.Manager()
-    # Make a cue for holding the place in the input file
-    input_line_queue = multiprocessing.Queue()
-    # We start at 0
-    input_line_queue.put(0)
-    # We make a few locks, as a tuple
-    (pass_lock, fail_lock, report_lock) = (
-        manager.Lock(), manager.Lock(), manager.Lock() )
-
-    # We start some jobs, one per process
-
-    jobs = []
-    i = 0
-    processes_population_size = int(args.processes)
-    while True:
-        # Waits for the input line marker from the queue
-        current_pos = input_line_queue.get()
-        if args.verbose > 0:
-            print("Overall file position in bytes "+str(current_pos))
-        # If it's a exitpill, declare the end and return.
-        if type(current_pos) is str:
-            input_line_queue.put("exitpill")
-            break
-        else:
-            # put it back
-            input_line_queue.put(int(current_pos))
-
-            jobs.append( 
-                multiprocessing.Process(
-                    target=reader,
-                    args=(
-                        input_line_queue, vars(args)["input-fastq"],
-                        pass_lock, vars(args)["output-base"]+"_pass.fastq",
-                        fail_lock, vars(args)["output-base"]+"_fail.fastq",
-                        report_lock, vars(args)["output-base"]+"_report.csv",
-                        args.gzipped,
-                        args.bite_size, args.limit, 
-                        args.write_report, args.verbose,
-                        args.memory_tracking,
-                        operations_array, args.filter ,
-                        args.output_seq, args.output_id
-                        ),
-                    name="Comrade"+str(i)
-                    )
-                )
-            jobs[-1].start()
-            processes_population_size -= 1
-            if args.verbose > 0:
-                print("\n"+"["+str(time.time())+"]"+" : "+"Comrade"+str(i)+" starting up...")
-            i += 1
-
-        if processes_population_size > 0:
-            continue
-
-        breaker = False
-        while not breaker:
-            time.sleep(args.job_polling_delay)
-            if args.verbose > 0:
-                print("Checking jobs...")
-            j = 0
-            while j < len(jobs):
-                if not jobs[j].is_alive():
-                    if args.verbose > 0:
-                        print("Here's the current processes and status:")
-                        print(jobs)
-                    jobs[j].join()
-                    jobs.pop(j)
-                    if processes_population_size == int(args.processes):
-                        raise("Well all processes are stalled out, somethings"+
-                            "off. Kill this and figure it out?"
-                            )
-                    processes_population_size += 1
-                    breaker = True
-                    if args.verbose > 0:
-                        print()
-                j += 1
-
-    for i in jobs:
-        if i.is_alive():
-            i.join()
+    reader(
+        vars(args)["input"],
+        args.gzipped,
+        vars(args)["output"],
+        vars(args)["failed"],
+        vars(args)["report"],
+        args.verbose,
+       # args.memory_tracking,
+        operations_array, 
+        args.filter ,
+        outputs_array
+        )
 
     print("\n"+"["+str(time.time())+"]"+" : "+
         "All worked 'till the work is done --- or some fatal error.")
