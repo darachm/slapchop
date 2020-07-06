@@ -6,6 +6,8 @@
 # It now uses fuzzy regular expressions, so maybe it should be called something
 # else. But who cares.
 #
+# Maybe call it itermae , a botching of itamae (sushi chef chopping) and iter
+#
 
 import re
 import json
@@ -32,63 +34,65 @@ def reader(
     outputs_array
     ):
 
-    print(
-        input_file,is_gzipped,output_file,failed_file,report_file,
-        verbosity,
-        #memory_tracking_level,
-        operations_array, 
-        filters ,
-        outputs_array
-        )
+    #
+    # Read in sequences
+    #
 
-    if input_file is not None:
+    # If that's none, which is default, then we're taking sequences by STDIN
+    if input_file is None:
+        input_seqs = SeqIO.parse(sys.stdin,"fastq")
+    else:
+        # Or if it's gzipped then it's from a gzipped file (but no gzipped
+        # STDIN plz, just zcat it
         if is_gzipped:
             with gzip.open(input_file,"rt") as input_file_gz:
                 input_seqs = SeqIO.parse(input_file_gz,"fastq")
+        # Otherwise is a flat file I assume
         else:
             input_seqs = SeqIO.parse(input_file,"fastq")
-    else:
-        input_seqs = SeqIO.parse(sys.stdin,"fastq")
 
     # Turn operations array into regexes !!!
     # Or any other stuff used multiple times !!!
 
-    pass_records = []
-    fail_records = []
-    report_records = []
+    #
+    # Do the chop-ing
+    #
+
+    # Opening up output file handles, will hand them off to each chop 
+    # If no output file, then I'm spitting it out on STDOUT
+    if output_file is None:
+        output = sys.stdout
+    # If you've specified a file, then that's a fastq
+    else:
+        output = open(output_file,"a")
+
+    # If no failed file specified, then we're just dumping it 
+    if failed_file is None:
+        failed = None
+    # But if specified, then it gets written
+    else:
+        failed = open(failed_file,"a")
+
+    if report_file is None:
+        report = None
+    else:
+        report = open(report_file,"a")
 
     for each_seq in input_seqs:
 
-        for (passed, output_record, report_object) in chop(each_seq, 
-                    operations_array,filters,outputs_array,
-                    report_file,verbosity):
-
-            # This is a per-record test
-            if passed:
-                pass_records.append(output_record)
-            else:
-                fail_records.append(output_record)
-            if report_file is not None:
-                report_records.append(report_object)
-    
-    if output_file is None:
-        SeqIO.write(pass_records,sys.stdout,"fastq")
-    else:
-        SeqIO.write(pass_records,output_file,"fastq")
-
-    if failed_file is not None:
-        SeqIO.write(fail_records,failed_file,"fastq")
-
-    if report_file is not None:
-        with open(report_file,"a") as f:
-            for i in report_records:
-                print(i,file=f)
+        chop(each_seq, 
+            operations_array, filters, outputs_array,
+            output, failed, report, 
+            verbosity
+            )
 
     return(0)
 
 def chop(
-    input_record, operations_array, filters,
-    outputs_array, report_file, verbosity
+    input_record, 
+    operations_array, filters, outputs_array, 
+    output, failed, report,
+    verbosity
     ):
 
     # Making a spacer thing
@@ -99,14 +103,13 @@ def chop(
     scores_holder = dict()
     seq_holder = {'spacer': spacer, 'input': input_record}
 
-    print(input_record)
-
     # Chop grained verbosity
     if verbosity > 2:
         print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
             " starting to process :\n  "+
             input_record.id+"\n  "+
             input_record.seq+"\n  "#+ #input_record.letter_annotations['phred_letters']
+            ,file=sys.stderr
             )
 
     for each_operation in operations_array:
@@ -122,6 +125,7 @@ def chop(
                 print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                 " can't find the sequence named `"+
                 operation[0]+"` in the holder, so continuing."
+                ,file=sys.stderr
                 )
             continue
 
@@ -129,6 +133,7 @@ def chop(
             print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                 " attempting to match : "+operation[1]+
                 " against "+seq_holder[operation[0]].seq
+                ,file=sys.stderr
                 )
 
         # Here we execute the actual meat of the business
@@ -149,6 +154,7 @@ def chop(
             print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                 " match is : "+
                 str(fuzzy_match)
+                ,file=sys.stderr
                 )
 
         # This is fine, just means the pattern couldn't match at all
@@ -187,81 +193,87 @@ def chop(
     if not all(evaluated_filters):
 
         if verbosity > 2:
-            print("\n"+"["+str(time.time())+"]"+" : "+multiprocessing.current_process().name+
+            print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                 " evaluated the filters as : "+
                 str(evaluated_filters)+
                 " and so failed."
+                ,file=sys.stderr
                 )
 
         # So if we should write this per-record report
-        if if_write_report:
-            return((False,input_record,
-                "\"FailedFilterOnThisInput\","+
-                "\""+input_record.id+"\",\""+
+        if report is not None:
+            print(
+                (False,input_record,
+                    "\"FailedFilterOnThisInput\",\""+
+                    str(evaluated_filters)+"\",\""+
+                    input_record.id+"\",\""+
                     input_record.seq+"\",\""+
                     re.sub("\"","\\\"",re.sub(",","\,",
                         json.dumps(scores_holder)))+"\""
-                ))
-        else:
-            return((False,input_record,""))
+                    ),
+                file=report)
         # If this json dump is empty, it might be because it didn't
         # ever match the first operation, so then just died without
         # building that object
+
+        if failed is not None:
+            SeqIO.write(input_record, failed, "fastq")
 
     else:
 
         try:
             # We attempt to form the correct output records
             output_records = [ evaluate_output_directives(i, j, seq_holder) for i, j in outputs_array ]
-            print(output_records)
+
+            # Otherwise, just the record and if it passed
+            [ SeqIO.write(output_record, output, "fastq") 
+                for output_record in output_records ]
 
             if verbosity > 2:
                 print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                     " evaluated the filters as : "+
                     str(evaluated_filters)+
                     " and so passed!"
+                    ,file=sys.stderr
                     )
 
             # If we want to write the report, we make it
-            if report_file is not None:
-                return(
-                    [ (True,output_record,
-                        "\"Passed\","+
-                        "\""+output_record.id+"\",\""+
-                            output_record.seq+"\",\""+
-                            re.sub("\"","\\\"",re.sub(",","\,",
-                                json.dumps(scores_holder)))+"\""
-                        ) for output_record in output_records ]
-                    )
-            # Otherwise, just the record and if it passed
-            else:
-                return(
-                    [ (True,output_record,"") 
-                        for output_record in output_records ]
-                    )
+            if report is not None:
+                [ print(
+                    (True,output_record,
+                        "\"Passed\",\""+
+                        "yep\",\""+
+                        input_record.id+"\",\""+
+                        input_record.seq+"\",\""+
+                        re.sub("\"","\\\"",re.sub(",","\,",
+                            json.dumps(scores_holder)))+"\""
+                        ),
+                    file=report)
+                    for output_record in output_records ]
 
         except:
 
             if verbosity > 2:
                 print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
                     " failed upon forming the output."
+                    ,file=sys.stderr
                     )
-
 
             # If we want to write the report, we make it
-            if report_file is not None:
-                return(
-                    [ (False,output_record,
-                        "\"FailedDirectivesToMakeOutputSeq\","+
-                        "\""+input_record.id+"\",\""+
-                            input_record.seq+"\",\""+
-                            re.sub("\"","\\\"",re.sub(",","\,",
-                                json.dumps(scores_holder)))+"\""
-                        ) ]
-                    )
-            # Otherwise, just the record and if it passed
-            else:
-                return( [ (False,input_record,"") ] )
+            if report is not None:
+                print(
+                    (False,input_record,
+                        "\"FailedDirectivesToMakeOutputSeq\",\""+
+                        "no bueno\",\""+
+                        input_record.id+"\",\""+
+                        input_record.seq+"\",\""+
+                        re.sub("\"","\\\"",re.sub(",","\,",
+                            json.dumps(scores_holder)))+"\""
+                        ),
+                    file=report)
+
+            if failed is not None:
+                SeqIO.write(input_record, failed, "fastq")
 
 def evaluate_output_directives(output_id, output_seq, seq_holder):
     # Here we evaluate them but using that dictionary as the global
@@ -379,12 +391,16 @@ if __name__ == '__main__':
 
             if instruction.find("<spacer>") > 0:
                 print("Hey, you can't name a capture group "+
-                    "'spacer', I'm using that!")
+                    "'spacer', I'm using that!"
+                    ,file=sys.stderr
+                    )
                 exit(1)
 
             if instruction.find("<input>") > 0:
                 print("Hey, you can't name a capture group "+
-                    "'input', I'm using that!")
+                    "'input', I'm using that!"
+                    ,file=sys.stderr
+                    )
                 exit(1)
 
             # similarly use the ` > ` to specify the flow of input to
@@ -405,7 +421,9 @@ if __name__ == '__main__':
             "Maybe there's small part I'm choking on? "+
             "Maybe try adding steps in one at a time in "+
             "interactive context with --limit set. "+
-            "Exiting...")
+            "Exiting..."
+            ,file=sys.stderr
+            )
         exit(1)
 
     try:
@@ -424,33 +442,43 @@ if __name__ == '__main__':
             "Maybe there's small part I'm choking on? "+
             "Maybe try adding steps in one at a time in "+
             "interactive context on a test set? "+
-            "Exiting...")
+            "Exiting..."
+            ,file=sys.stderr
+            )
         exit(1)
 
     if args.verbose > 0:
         print("\n"+"["+str(time.time())+"]"+" : "+"I'm reading in '"+#vars(args)["input-fastq"]+"', "+
             #"treating it as a "+("zipped" if args.gzipped else "unzipped")+" file and "+
-            "applying these operations of alignment :\n")
+            "applying these operations of alignment :\n"
+            ,file=sys.stderr
+            )
         for each in operations_array:
             print("- "+each[0]+" :\n"+
                 "  from : "+each[1]+"\n"+
-                "  extract groups with regex : '"+each[2])
+                "  extract groups with regex : '"+each[2]
+                ,file=sys.stderr
+                )
 
     if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : "+"...and with these filters:")
+        print("\n"+"["+str(time.time())+"]"+" : "+"...and with these filters:"
+            ,file=sys.stderr
+            )
         try:
             for i in args.filter:
-                print("  "+i)
+                print("  "+i,file=sys.stderr)
         except:
-            print("  ( no filters defined )")
-            args.filter = ["True == True"]
+            print("  ( no filters defined )",file=sys.stderr)
+
+    if args.filter is None:
+        args.filter = ["True == True"]
 
     if args.verbose > 0:
         print("\n"+"["+str(time.time())+"]"+" : "+"Then, I'm going to write out a FASTQ file to '"+
-            "here or stdout")#vars(args)["output-base"]+".fastq'",end="")
+            "here or stdout",file=sys.stderr)
         if args.report is not None:
-            print(" and a report to '"+vars(args)["report"]+"'",end="")
-        print(".")
+            print(" and a report to '"+vars(args)["report"]+"'",end="",file=sys.stderr)
+        print(".",file=sys.stderr)
 
 #    # checking file existance for outputs, zipping together the 
 #    # output base with each of the three. 
@@ -478,7 +506,7 @@ if __name__ == '__main__':
 
     # We begin
     if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : BEGIN\n")
+        print("\n"+"["+str(time.time())+"]"+" : BEGIN\n",file=sys.stderr)
     
     reader(
         vars(args)["input"],
@@ -494,5 +522,5 @@ if __name__ == '__main__':
         )
 
     print("\n"+"["+str(time.time())+"]"+" : "+
-        "All worked 'till the work is done --- or some fatal error.")
+        "All worked 'till the work is done --- or some fatal error.",file=sys.stderr)
     exit(0)
