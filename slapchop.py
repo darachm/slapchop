@@ -28,7 +28,6 @@ from Bio import SeqIO
 def reader(
     input_file,is_gzipped,output_file,failed_file,report_file,
     verbosity,
-    #memory_tracking_level,
     operations_array, 
     filters ,
     outputs_array
@@ -78,30 +77,34 @@ def reader(
     else:
         report = open(report_file,"a")
 
+    # Making a spacer thing and seq_holder
+    spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
+    spacer.letter_annotations['phred_letters'] = "I"
+    seq_holder = {'spacer': spacer, 'input': None}
+
     for each_seq in input_seqs:
 
         chop(each_seq, 
             operations_array, filters, outputs_array,
             output, failed, report, 
+            seq_holder.copy(),
             verbosity
             )
 
     return(0)
 
+
 def chop(
     input_record, 
     operations_array, filters, outputs_array, 
     output, failed, report,
+    seq_holder,
     verbosity
     ):
 
-    # Making a spacer thing
-    spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
-    spacer.letter_annotations['phred_letters'] = "I"
-
     # We make some holders for these operations
     scores_holder = dict()
-    seq_holder = {'spacer': spacer, 'input': input_record}
+    seq_holder['input'] = input_record
 
     # Chop grained verbosity
     if verbosity > 2:
