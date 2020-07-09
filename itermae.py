@@ -1,41 +1,48 @@
 #!/usr/bin/env python3
 
-# 
-# SLAPCHOP - Simply Looking At Pairwise Comparisons to Help Optimize Parsing
-# Name comes from first version that used SW alignments.
-# It now uses fuzzy regular expressions, so maybe it should be called something
-# else. But who cares.
+# 'itermae.py' is a script to chop up FASTQ reads based on fuzzy regular 
+# expression  matching. It's most intended for you to be passing in the FASTQ 
+# as a pipe, so probably output from 'zcat', and is designed to be run with
+# GNU 'parallel'. Compared with previous versions (named 'SLAPCHOP') this is
+# designed to just do one thing well - chop per read. For each read, it allows
+# multiple operations to be run, as well as multiple outputs.
 #
-# Maybe call it itermae , a botching of itamae (sushi chef chopping) and iter
-#
+# To allow multiple outputs, the default output format is going to be an 
+# unmapped BAM file, as this permits regenerating other formats and will allow
+# table-based filtering of different segments out.
+
+import argparse
 
 import re
-import json
-import regex
-import os.path
-import time
-import statistics
-import argparse
 import itertools
-import multiprocessing 
-from Bio import Seq, SeqRecord
-import tracemalloc
-import gzip
+import json
+
+import regex
 
 import sys
 from Bio import SeqIO
+from Bio import Seq, SeqRecord
+import gzip
 
-def reader(
-    input_file,is_gzipped,output_file,failed_file,report_file,
-    verbosity,
-    operations_array, 
-    filters ,
-    outputs_array
+import time
+import statistics
+import multiprocessing 
+import tracemalloc
+import os.path
+
+def reader(input_file, is_gzipped, 
+    output_file, failed_file, report_file,
+    operations_array, filters , outputs_array,
+    out_format,
+    verbosity
     ):
 
-    #
-    # Read in sequences
-    #
+    """
+    Designed to be called later. This takes some input filepath, where 'None' 
+    gets treated like the input is STDIN. 
+    """
+
+    ### Open up file handles
 
     # If that's none, which is default, then we're taking sequences by STDIN
     if input_file is None:
@@ -50,28 +57,22 @@ def reader(
         else:
             input_seqs = SeqIO.parse(input_file,"fastq")
 
-    # Turn operations array into regexes !!!
-    # Or any other stuff used multiple times !!!
-
-    #
-    # Do the chop-ing
-    #
-
     # Opening up output file handles, will hand them off to each chop 
     # If no output file, then I'm spitting it out on STDOUT
     if output_file is None:
         output = sys.stdout
-    # If you've specified a file, then that's a fastq
+    # If you've specified a file, then that's here
     else:
         output = open(output_file,"a")
 
-    # If no failed file specified, then we're just dumping it 
+    # If no failed file specified, then we're just ignoring it
     if failed_file is None:
         failed = None
     # But if specified, then it gets written
     else:
         failed = open(failed_file,"a")
 
+    # Same for optional report
     if report_file is None:
         report = None
     else:
@@ -82,83 +83,69 @@ def reader(
     spacer.letter_annotations['phred_letters'] = "I"
     seq_holder = {'spacer': spacer, 'input': None}
 
+    # TODO Turn operations array into regexes !!!
+    # TODO Or any other stuff used multiple times !!!
+
+    ### Do the chop-ing
+
     for each_seq in input_seqs:
 
-        chop(each_seq, 
-            operations_array, filters, outputs_array,
-            output, failed, report, 
-            seq_holder.copy(),
+        chop(each_seq, # Each sequence, one by one...
+            operations_array, filters, outputs_array, # Things todo!
+            output, failed, report, # File handles
+            seq_holder.copy(),  # Here we pass in the sequence holder, as it's
+                                # pre-loaded with the spacer
+            out_format,
             verbosity
             )
 
     return(0)
 
+def debug_statement(verbosity, threshold=0, desc=""):
+    if verbosity >= threshold:
+        print("\n["+str(time.time())+"] : "+desc,file=sys.stderr)
 
-def chop(
-    input_record, 
+def chop(input_record, 
     operations_array, filters, outputs_array, 
     output, failed, report,
     seq_holder,
+    out_format,
     verbosity
     ):
+
+    """
+    This one takes each record, applies the operations, evaluates the filters,
+    generates outputs, and writes them to output handles as appropriate.
+    """
 
     # We make some holders for these operations
     scores_holder = dict()
     seq_holder['input'] = input_record
 
     # Chop grained verbosity
-    if verbosity > 2:
-        print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
-            " starting to process :\n  "+
-            input_record.id+"\n  "+
-            input_record.seq+"\n  "#+ #input_record.letter_annotations['phred_letters']
-            ,file=sys.stderr
-            )
+    debug_statement(verbosity,2,"starting to process : "+
+        input_record.id+"\n  "+input_record.seq+"\n  "+ 
+        str(input_record.letter_annotations['phred_quality'])+"" )
 
-    for each_operation in operations_array:
+    # This should fail if you didn't specify anything taking 
+    # from input stream!
+    assert operations_array[0][0] == "input", (
+        "can't find the sequence named `input`, rather we see `"+
+        operations_array[0][0]+"` in the holder, so breaking. You should "+
+        "have the first operation start with `input` as a source." )
 
-        # The first element is the name, the next two are used later
-        operation_name = each_operation[0]
-        operation = each_operation[1:]
+    for operation_name, operation in enumerate(operations_array):
 
-        # This should fail if you didn't specify anything taking 
-        # from input stream!
-        if operation[0] not in seq_holder.keys():
-            if verbosity > 3:
-                print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
-                " can't find the sequence named `"+
-                operation[0]+"` in the holder, so continuing."
-                ,file=sys.stderr
-                )
-            continue
+        operation_name = str(operation_name)
 
-        if verbosity > 3:
-            print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
-                " attempting to match : "+operation[1]+
-                " against "+seq_holder[operation[0]].seq
-                ,file=sys.stderr
-                )
+        debug_statement(verbosity,3,"attempting to match : "+
+            str(operation[1])+" against "+seq_holder[operation[0]].seq )
 
         # Here we execute the actual meat of the business
-        sequence_to_search = str(seq_holder[operation[0]].seq).upper()
+        fuzzy_match = operation[1].search(
+                str(seq_holder[operation[0]].seq).upper() )
 
-        compiled_regex = regex.compile(
-            # We use this regex
-            operation[1], 
-            # And we use the BESTMATCH strategy, I think
-            regex.BESTMATCH
-            )
-        fuzzy_match = compiled_regex.search(
-            # to search on this sequence
-            sequence_to_search
-            )
-
-        if verbosity > 3:
-            print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
-                " match is : "+
-                str(fuzzy_match)
-                ,file=sys.stderr
-                )
+        debug_statement(verbosity,3," match is : "+str(fuzzy_match) )
 
         # This is fine, just means the pattern couldn't match at all
         if fuzzy_match is None:
@@ -167,7 +154,7 @@ def chop(
         else:
             # We use tuples to store all the details of the kinds
             # of errors that allowed the match
-            (scores_holder[operation_name+'_substitutions'],
+            (scores_holder[str(operation_name)+'_substitutions'],
                 scores_holder[operation_name+'_insertions'],
                 scores_holder[operation_name+'_deletions']
                 ) = fuzzy_match.fuzzy_counts
@@ -195,13 +182,8 @@ def chop(
     # This evaluated_filters should be logical list
     if not all(evaluated_filters):
 
-        if verbosity > 2:
-            print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
-                " evaluated the filters as : "+
-                str(evaluated_filters)+
-                " and so failed."
-                ,file=sys.stderr
-                )
+        debug_statement(verbosity,2,"evaluated the filters as : "+
+                str(evaluated_filters)+" and so failed." )
 
         # So if we should write this per-record report
         if report is not None:
@@ -229,16 +211,25 @@ def chop(
             output_records = [ evaluate_output_directives(i, j, seq_holder) for i, j in outputs_array ]
 
             # Otherwise, just the record and if it passed
-            [ SeqIO.write(output_record, output, "fastq") 
-                for output_record in output_records ]
+            if out_format is "sam":
+                for which, output_record in enumerate(output_records):
+                    print(
+                        "\t".join([
+                            output_record.id,
+                            "0", "*", "0", "255", "*", "=", "0", "0", 
+                            str(output_record.seq),
+                            ''.join([chr(i+33) for i in output_record.letter_annotations['phred_quality']]),
+                            "ITERMAEGROUP:"+str(which)
+                            ])
+                        ,file=output)
+            elif out_format is "fastq":
+                for output_record in output_records:
+                    SeqIO.write(output_record, output, "fastq") 
+            else:
+                print("I dunno",file=sys.stderr)
 
-            if verbosity > 2:
-                print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
-                    " evaluated the filters as : "+
-                    str(evaluated_filters)+
-                    " and so passed!"
-                    ,file=sys.stderr
-                    )
+            debug_statement(verbosity,2,"evaluated the filters as : "+
+                    str(evaluated_filters)+" and so passed!" )
 
             # If we want to write the report, we make it
             if report is not None:
@@ -256,11 +247,7 @@ def chop(
 
         except:
 
-            if verbosity > 2:
-                print("\n"+"["+str(time.time())+"]"+" : "+#multiprocessing.current_process().name+
-                    " failed upon forming the output."
-                    ,file=sys.stderr
-                    )
+            debug_statement(verbosity,2,"failed upon forming the output.")
 
             # If we want to write the report, we make it
             if report is not None:
@@ -322,6 +309,8 @@ if __name__ == '__main__':
         help="Name of output file, incase you want to write it to a file, "+
             "but we expect it to go to STDOUT. "+
             "For example: basename.fastq, basename.report")
+    parser.add_argument("--output-format",default='sam',
+        help="Format, default is an unmapped sam ('sam'), also can do 'fastq'.")
     parser.add_argument("--failed",default=None,
         help="Name of output file for failed reads, for debugging."+
             "If you say 'STDOUT' then it'll go there. "
@@ -389,17 +378,14 @@ if __name__ == '__main__':
 
         for each in args.operation:
 
-            # Split on the colon to specify the name on the left of it
-            (name, instruction) = each.split(':')
-
-            if instruction.find("<spacer>") > 0:
+            if each.find("<dummyspacer>") > 0:
                 print("Hey, you can't name a capture group "+
-                    "'spacer', I'm using that!"
+                    "'dummyspacer', I'm using that!"
                     ,file=sys.stderr
                     )
                 exit(1)
 
-            if instruction.find("<input>") > 0:
+            if each.find("<input>") > 0:
                 print("Hey, you can't name a capture group "+
                     "'input', I'm using that!"
                     ,file=sys.stderr
@@ -408,13 +394,15 @@ if __name__ == '__main__':
 
             # similarly use the ` > ` to specify the flow of input to
             # the regex
-            (input_string, regex_string) = re.split("\s>\s",
-                instruction.strip())
+            (input_string, regex_string) = re.split("\s>\s",each.strip())
+
+            compiled_regex = regex.compile(
+                regex_string.strip(), # We use this regex
+                regex.BESTMATCH # And we use the BESTMATCH strategy, I think
+                )
 
             # append that to the operations array
-            operations_array.append( [name, 
-                    input_string.strip(), regex_string.strip()] 
-                )
+            operations_array.append( [input_string.strip(), compiled_regex] )
 
     except:
 
@@ -450,23 +438,17 @@ if __name__ == '__main__':
             )
         exit(1)
 
-    if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : "+"I'm reading in '"+#vars(args)["input-fastq"]+"', "+
-            #"treating it as a "+("zipped" if args.gzipped else "unzipped")+" file and "+
-            "applying these operations of alignment :\n"
-            ,file=sys.stderr
-            )
+    debug_statement(args.verbose,1,"I'm reading in something, "+
+            "applying these operations of alignment:\n")
+    if args.verbose >= 1:
         for each in operations_array:
-            print("- "+each[0]+" :\n"+
-                "  from : "+each[1]+"\n"+
-                "  extract groups with regex : '"+each[2]
+            print("- from : "+each[0]+"\n"+
+                "  extract groups with regex : '"+str(each[1])
                 ,file=sys.stderr
                 )
 
-    if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : "+"...and with these filters:"
-            ,file=sys.stderr
-            )
+    debug_statement(args.verbose,1,"...and with these filters:\n")
+    if args.verbose >= 1:
         try:
             for i in args.filter:
                 print("  "+i,file=sys.stderr)
@@ -476,12 +458,12 @@ if __name__ == '__main__':
     if args.filter is None:
         args.filter = ["True == True"]
 
-    if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : "+"Then, I'm going to write out a FASTQ file to '"+
-            "here or stdout",file=sys.stderr)
+    debug_statement(args.verbose,1,"Then, I'm going to write out a FASTQ file "+
+        "to somewhere or stdout.")
+    if args.verbose >= 1:
         if args.report is not None:
-            print(" and a report to '"+vars(args)["report"]+"'",end="",file=sys.stderr)
-        print(".",file=sys.stderr)
+            debug_statement(args.verbose,1," and a report to '"+
+                vars(args)["report"]+".")
 
 #    # checking file existance for outputs, zipping together the 
 #    # output base with each of the three. 
@@ -508,8 +490,7 @@ if __name__ == '__main__':
 #        tracemalloc.start(10)
 
     # We begin
-    if args.verbose > 0:
-        print("\n"+"["+str(time.time())+"]"+" : BEGIN\n",file=sys.stderr)
+    debug_statement(args.verbose,1,"BEGIN")
     
     reader(
         vars(args)["input"],
@@ -517,11 +498,12 @@ if __name__ == '__main__':
         vars(args)["output"],
         vars(args)["failed"],
         vars(args)["report"],
-        args.verbose,
        # args.memory_tracking,
         operations_array, 
         args.filter ,
-        outputs_array
+        outputs_array,
+        args.output_format,
+        args.verbose
         )
 
     print("\n"+"["+str(time.time())+"]"+" : "+
