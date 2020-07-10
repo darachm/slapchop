@@ -75,7 +75,10 @@ def reader(input_file, is_gzipped,
     else:
         report = open(report_file,"a")
 
-    # Making a dummyspacer thing and seq_holder
+    # Making a dummyspacer thing and seq_holder, this gets copied for each
+    # chop function call, so it's where the internals can hold matches for
+    # subsequent group searches. Dummy spacer is for odd formatting outputs.
+    # Not very necessary now that I put it out as SAM...
     seq_holder = {
         'dummyspacer': SeqRecord.SeqRecord(Seq.Seq("X"),id="dummyspacer"),
         'input': None}
@@ -90,15 +93,23 @@ def reader(input_file, is_gzipped,
             output, failed, report, # File handles
             seq_holder.copy(),  # Here we pass in the sequence holder, as it's
                                 # pre-loaded with the dummyspacer
-            out_format,
+            out_format, # Er... what format for output?
             verbosity
             )
 
     return(0)
 
+
 def debug_statement(verbosity, threshold=0, desc=""):
+    """
+    This is just to shorten up the code where it's just reporting what's going
+    on, so just a lil function to spit out to stderr with a timestamp.
+    """
     if verbosity >= threshold:
         print("\n["+str(time.time())+"] : "+desc,file=sys.stderr)
+    # TODO eval the desc so that it doesn't have to format it for all non 
+    #   verbose runs where this isn't printed
+
 
 def chop(input_record, 
     operations_array, filters, outputs_array, 
@@ -107,13 +118,13 @@ def chop(input_record,
     out_format,
     verbosity
     ):
-
     """
     This one takes each record, applies the operations, evaluates the filters,
     generates outputs, and writes them to output handles as appropriate.
     """
 
-    # We make some holders for these operations
+    # We make a score holder (for statistics), put input_record in seq_holder
+    # copy we have.
     scores_holder = dict()
     seq_holder['input'] = input_record
 
@@ -156,11 +167,13 @@ def chop(input_record,
         # If we did match, then we store them in places
         else:
             # We use tuples to store all the details of the kinds
-            # of errors that allowed the match
-            (scores_holder[str(operation_name)+'_substitutions'],
-                scores_holder[operation_name+'_insertions'],
-                scores_holder[operation_name+'_deletions']
-                ) = fuzzy_match.fuzzy_counts
+            # of errors that allowed the match, but we only need that for
+            # the filters, so test first
+            if filters is not None:
+                (scores_holder[str(operation_name)+'_substitutions'],
+                    scores_holder[operation_name+'_insertions'],
+                    scores_holder[operation_name+'_deletions']
+                    ) = fuzzy_match.fuzzy_counts
             # Then for each of the groups matched by the regex
             for match_name in fuzzy_match.groupdict():
                 # We stick into the holder
@@ -170,20 +183,21 @@ def chop(input_record,
                     seq_holder[operation[0]]\
                     [slice(*fuzzy_match.span(match_name))]
                 # Then we record the start, end, and length of the
-                # matched span
-                (scores_holder[match_name+'_start'],
-                    scores_holder[match_name+'_end']
-                    ) = fuzzy_match.span(match_name)
-                scores_holder[match_name+'_length'] = \
-                    (scores_holder[match_name+'_end'] - 
-                        scores_holder[match_name+'_start'])
+                # matched span, again only if we have filters
+                if filters is not None:
+                    (scores_holder[match_name+'_start'],
+                        scores_holder[match_name+'_end']
+                        ) = fuzzy_match.span(match_name)
+                    scores_holder[match_name+'_length'] = \
+                        (scores_holder[match_name+'_end'] - 
+                            scores_holder[match_name+'_start'])
 
 
     # All these values allow use to apply filters, using this
     # function
     evaluated_filters = evaluate_filters(filters, {**scores_holder, **seq_holder} )
 
-    # This evaluated_filters should be logical list
+    # This evaluated_filters should be logical list. So did we pass all filters?
     if not all(evaluated_filters):
 
         debug_statement(verbosity,2,"evaluated the filters as : "+
@@ -191,15 +205,14 @@ def chop(input_record,
 
         # So if we should write this per-record report
         if report is not None:
-            print(
-                (False,input_record,
-                    "\"FailedFilterOnThisInput\",\""+
+            print("\"FailedFilter\",\""+
+                    str(input_record.seq)+"\",\""+
                     str(evaluated_filters)+"\",\""+
-                    input_record.id+"\",\""+
-                    input_record.seq+"\",\""+
+                    str(input_record.id)+"\",\""+
+                    str(input_record.seq)+"\",\""+
                     re.sub("\"","\\\"",re.sub(",","\,",
                         json.dumps(scores_holder)))+"\""
-                    ),
+                    ,
                 file=report)
         # If this json dump is empty, it might be because it didn't
         # ever match the first operation, so then just died without
@@ -208,11 +221,14 @@ def chop(input_record,
         if failed is not None:
             SeqIO.write(input_record, failed, "fastq")
 
+        return 0
+
     else:
 
         try:
             # We attempt to form the correct output records
             output_records = [ evaluate_output_directives(i, j, seq_holder) for i, j in outputs_array ]
+            # So this will fail us out of the 'try' if it doesn't form
 
             # Otherwise, just the record and if it passed
             if out_format == "sam":
@@ -237,17 +253,18 @@ def chop(input_record,
 
             # If we want to write the report, we make it
             if report is not None:
-                [ print(
-                    (True,output_record,
-                        "\"Passed\",\""+
-                        "yep\",\""+
-                        input_record.id+"\",\""+
-                        input_record.seq+"\",\""+
+                [ print("\"Passed\",\""+
+                        str(output_record.seq)+"\",\""+
+                        str(evaluated_filters)+"\",\""+
+                        str(input_record.id)+"\",\""+
+                        str(input_record.seq)+"\",\""+
                         re.sub("\"","\\\"",re.sub(",","\,",
                             json.dumps(scores_holder)))+"\""
-                        ),
+                        ,
                     file=report)
-                    for output_record in output_records ]
+                        for output_record in output_records ]
+
+            return 0
 
         except:
 
@@ -255,19 +272,20 @@ def chop(input_record,
 
             # If we want to write the report, we make it
             if report is not None:
-                print(
-                    (False,input_record,
-                        "\"FailedDirectivesToMakeOutputSeq\",\""+
-                        "no bueno\",\""+
-                        input_record.id+"\",\""+
-                        input_record.seq+"\",\""+
+                print("\"FailedDirectivesToMakeOutputSeq\",\""+
+                        str(input_record.seq)+"\",\""+
+                        str(evaluated_filters)+"\",\""+
+                        str(input_record.id)+"\",\""+
+                        str(input_record.seq)+"\",\""+
                         re.sub("\"","\\\"",re.sub(",","\,",
                             json.dumps(scores_holder)))+"\""
-                        ),
+                        ,
                     file=report)
 
             if failed is not None:
                 SeqIO.write(input_record, failed, "fastq")
+
+            return 0
 
 def evaluate_output_directives(output_id, output_seq, seq_holder):
     # Here we evaluate them but using that dictionary as the global
@@ -514,4 +532,5 @@ if __name__ == '__main__':
 
     print("\n"+"["+str(time.time())+"]"+" : "+
         "All worked 'till the work is done --- or some fatal error.",file=sys.stderr)
+
     exit(0)
