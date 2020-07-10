@@ -78,10 +78,10 @@ def reader(input_file, is_gzipped,
     else:
         report = open(report_file,"a")
 
-    # Making a spacer thing and seq_holder
-    spacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="spacer")
-    spacer.letter_annotations['phred_letters'] = "I"
-    seq_holder = {'spacer': spacer, 'input': None}
+    # Making a dummyspacer thing and seq_holder
+    dummyspacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="dummyspacer")
+    dummyspacer.letter_annotations['phred_letters'] = "I"
+    seq_holder = {'dummyspacer': dummyspacer, 'input': None}
 
     # TODO Turn operations array into regexes !!!
     # TODO Or any other stuff used multiple times !!!
@@ -94,7 +94,7 @@ def reader(input_file, is_gzipped,
             operations_array, filters, outputs_array, # Things todo!
             output, failed, report, # File handles
             seq_holder.copy(),  # Here we pass in the sequence holder, as it's
-                                # pre-loaded with the spacer
+                                # pre-loaded with the dummyspacer
             out_format,
             verbosity
             )
@@ -138,6 +138,14 @@ def chop(input_record,
 
         operation_name = str(operation_name)
 
+        # Okay, the one required for input here, that needs to have actually
+        # matched in order to generate this next one, so just continuing if
+        # that's not there. Outputs should be made tolerate of missing groups.
+        try: 
+            seq_holder[operation[0]]
+        except:
+            continue
+
         debug_statement(verbosity,3,"attempting to match : "+
             str(operation[1])+" against "+seq_holder[operation[0]].seq )
 
@@ -175,6 +183,7 @@ def chop(input_record,
                     (scores_holder[match_name+'_end'] - 
                         scores_holder[match_name+'_start'])
 
+
     # All these values allow use to apply filters, using this
     # function
     evaluated_filters = evaluate_filters(filters, {**scores_holder, **seq_holder} )
@@ -211,7 +220,7 @@ def chop(input_record,
             output_records = [ evaluate_output_directives(i, j, seq_holder) for i, j in outputs_array ]
 
             # Otherwise, just the record and if it passed
-            if out_format is "sam":
+            if out_format == "sam":
                 for which, output_record in enumerate(output_records):
                     print(
                         "\t".join([
@@ -219,14 +228,14 @@ def chop(input_record,
                             "0", "*", "0", "255", "*", "=", "0", "0", 
                             str(output_record.seq),
                             ''.join([chr(i+33) for i in output_record.letter_annotations['phred_quality']]),
-                            "ITERMAEGROUP:"+str(which)
+                            "XI:"+str(which)
                             ])
                         ,file=output)
-            elif out_format is "fastq":
+            elif out_format == "fastq":
                 for output_record in output_records:
                     SeqIO.write(output_record, output, "fastq") 
             else:
-                print("I dunno",file=sys.stderr)
+                print("I don't "+out_format+" format, looping over here") 
 
             debug_statement(verbosity,2,"evaluated the filters as : "+
                     str(evaluated_filters)+" and so passed!" )
@@ -339,7 +348,7 @@ if __name__ == '__main__':
             "the documentation via the README.md file, or to "+
             "the original regex module documentation. "+
             "They are chained in the order you specify. "+
-            "You can't name a group 'input' or 'spacer' !")
+            "You can't name a group 'input' or 'dummyspacer' !")
 
     # Filter specification
     parser.add_argument("--filter","-f",action="append",
