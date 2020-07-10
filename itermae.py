@@ -16,6 +16,7 @@ import argparse
 import re
 import itertools
 import json
+import time
 
 import regex
 
@@ -24,7 +25,6 @@ from Bio import SeqIO
 from Bio import Seq, SeqRecord
 import gzip
 
-import time
 import statistics
 import multiprocessing 
 import tracemalloc
@@ -79,12 +79,10 @@ def reader(input_file, is_gzipped,
         report = open(report_file,"a")
 
     # Making a dummyspacer thing and seq_holder
-    dummyspacer = SeqRecord.SeqRecord(Seq.Seq("X"),id="dummyspacer")
-    dummyspacer.letter_annotations['phred_letters'] = "I"
-    seq_holder = {'dummyspacer': dummyspacer, 'input': None}
-
-    # TODO Turn operations array into regexes !!!
-    # TODO Or any other stuff used multiple times !!!
+    seq_holder = {
+        'dummyspacer': SeqRecord.SeqRecord(Seq.Seq("X"),id="dummyspacer"),
+        'input': None}
+    seq_holder['dummyspacer'].letter_annotations['phred_quality'] = [40]
 
     ### Do the chop-ing
 
