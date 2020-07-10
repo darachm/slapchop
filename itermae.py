@@ -11,24 +11,21 @@
 # unmapped BAM file, as this permits regenerating other formats and will allow
 # table-based filtering of different segments out.
 
+# Programming, odds and ends
 import argparse
-
 import re
 import itertools
 import json
 import time
-
-import regex
-
+import statistics
 import sys
-from Bio import SeqIO
-from Bio import Seq, SeqRecord
 import gzip
 
-import statistics
-import multiprocessing 
-import tracemalloc
-import os.path
+# Heart of it, fuzzy regex and SeqIO classes
+import regex
+from Bio import SeqIO
+from Bio import Seq, SeqRecord
+
 
 def reader(input_file, is_gzipped, 
     output_file, failed_file, report_file,
@@ -354,7 +351,7 @@ if __name__ == '__main__':
             "alignment based cutoff. This is specified per "+
             "operation, so remember the name from above. "+
             "Every sequence has a _start, _end, and _length "+
-            "calculated. You're welcome."
+            "calculated. You're welcome. Also, `statistics` package is loaded."
             )
 
     # Outputs
@@ -482,6 +479,7 @@ if __name__ == '__main__':
 #        this_path = ''.join(each)
 #        # If the write-report flag is off and the path is the report,
 #        # then this won't trip True for that path existing
+#import os.path
 #        if os.path.isfile(this_path) and              \
 #                not( not(args.write_report) and       \
 #                    (this_path.find("_report")>=0) ):
@@ -495,6 +493,7 @@ if __name__ == '__main__':
 #    # memory debugging
 #    if args.memory_tracking:
 #        tracemalloc.start(10)
+#import tracemalloc
 
     # We begin
     debug_statement(args.verbose,1,"BEGIN")
