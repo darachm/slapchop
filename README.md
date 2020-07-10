@@ -1,9 +1,6 @@
-# itermae
+# SLAPCHOP
 
-itermae.py parses Illumina reads using patterns to extract barcodes.
-
-
-<!--
+SLAPCHOP.py parses Illumina reads using patterns to extract barcodes.
 
 By using fuzzy regular expressions we can chop robustly barcodes from 
 indeterminate positions, filter the results based on sequence or match 
@@ -103,4 +100,3 @@ This script depends strongly upon (uses) the work of
 and
 [Biopython](https://pypi.org/project/biopython/). Thanks! Check them out...
 
--->
